@@ -1,0 +1,15 @@
+# Runtime data
+storage/*
+!storage/.gitkeep
+
+# Secrets / local config
+.env
+*.env
+app/config/local*.php
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
