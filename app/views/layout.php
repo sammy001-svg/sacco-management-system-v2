@@ -20,6 +20,13 @@ $nav = [
         ['transactions', 'Transactions', 'arrow-left-right', 'transactions.view'],
         ['expenses', 'Expenses', 'wallet2', 'expenses.view'],
     ],
+    'Accounting'     => [
+        ['statements', 'Financial Statements', 'file-earmark-bar-graph', 'accounting.view'],
+        ['accounts', 'Chart of Accounts', 'journal-bookmark', 'accounting.view'],
+        ['journals', 'Journal Entries', 'journal-text', 'accounting.view'],
+        ['distributions', 'Interest & Dividends', 'percent', 'distributions.prepare'],
+        ['year_end', 'Year-End Close', 'calendar-check', 'accounting.view'],
+    ],
     'Insights'       => [['reports', 'Reports', 'bar-chart-line', 'reports.view']],
     'Administration' => [
         ['branches', 'Branches', 'buildings', 'branches.manage'],
@@ -164,6 +171,9 @@ $asset = fn(string $p) => $p . '?v=' . @filemtime(APP_ROOT . '/' . $p);
     </header>
 
     <main class="content" id="content">
+      <?php if ($user['role'] === 'admin' && (int) setting('db_version', 1) < 2): ?>
+        <div class="info-strip warning"><i class="bi bi-database-exclamation"></i><span><strong>Database upgrade required.</strong> Run <code>php database/migrate.php</code> to enable accounting.</span></div>
+      <?php endif; ?>
       <?= $content ?>
     </main>
 

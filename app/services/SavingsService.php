@@ -58,17 +58,19 @@ final class SavingsService
                 'member_id'      => $a['member_id'],
                 'account_type'   => 'savings',
                 'account_id'     => $accountId,
-                'type'           => 'deposit',
+                'type'           => $o['type'] ?? 'deposit',
                 'amount'         => $amount,
                 'balance_after'  => $balance,
                 'flow'           => $o['flow'] ?? 'in',
+                'gl'             => $o['gl'] ?? [],
                 'payment_method' => $o['payment_method'] ?? 'cash',
                 'payment_ref'    => $o['payment_ref'] ?? null,
                 'narration'      => $o['narration'] ?? ('Deposit to ' . $a['product_name']),
                 'at'             => $o['at'] ?? null,
             ]);
 
-            if ($a['member_status'] === 'dormant') {
+            $realDeposit = ($o['type'] ?? 'deposit') === 'deposit' && ($o['payment_method'] ?? 'cash') !== 'internal';
+            if ($realDeposit && $a['member_status'] === 'dormant') {
                 DB::query("UPDATE members SET status = 'active' WHERE id = ?", [$a['member_id']]);
             }
 

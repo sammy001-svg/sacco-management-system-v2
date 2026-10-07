@@ -14,6 +14,8 @@ const SETTINGS_SCHEMA = [
         'share_price'       => 'required|numeric|min:0.01',
         'min_share_capital' => 'required|numeric|min:0',
         'registration_fee'  => 'required|numeric|min:0',
+        'wht_interest_rate' => 'required|numeric|min:0|max:100',
+        'wht_dividend_rate' => 'required|numeric|min:0|max:100',
     ],
     'operations' => [
         'member_no_prefix'   => 'required|string|max:8',

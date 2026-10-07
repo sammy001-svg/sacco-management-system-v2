@@ -200,10 +200,22 @@ return [
             }
         }
         $arrears = loans_arrears([(int) $l['id']])[(int) $l['id']] ?? ['arrears' => 0, 'days' => 0];
+        $repayments = DB::all('SELECT r.*, t.txn_ref, u.name AS received_by, (SELECT COUNT(*) FROM loan_repayment_allocations a WHERE a.repayment_id = r.id) AS tracked FROM loan_repayments r LEFT JOIN transactions t ON t.id = r.transaction_id LEFT JOIN users u ON u.id = r.created_by WHERE r.loan_id = ? ORDER BY r.id DESC', [$l['id']]);
+        // Repayments are reversed newest-first, and only when their breakdown is tracked.
+        $reversible = null;
+        if (Auth::can('loans.reverse') && in_array($l['status'], ['active', 'closed'], true)) {
+            foreach ($repayments as $r) {
+                if ($r['status'] === 'posted') {
+                    $reversible = (int) $r['tracked'] > 0 ? (int) $r['transaction_id'] : null;
+                    break;
+                }
+            }
+        }
         return ['data' => [
             'loan'        => $l,
             'schedule'    => $schedule,
-            'repayments'  => DB::all('SELECT r.*, t.txn_ref, u.name AS received_by FROM loan_repayments r LEFT JOIN transactions t ON t.id = r.transaction_id LEFT JOIN users u ON u.id = r.created_by WHERE r.loan_id = ? ORDER BY r.id DESC', [$l['id']]),
+            'repayments'  => $repayments,
+            'reversible_repayment' => $reversible,
             'guarantors'  => DB::all('SELECT g.*, m.member_no, m.first_name, m.last_name, m.phone FROM loan_guarantors g JOIN members m ON m.id = g.member_id WHERE g.loan_id = ?', [$l['id']]),
             'arrears'     => $arrears['arrears'],
             'days_overdue'=> $arrears['days'],
@@ -311,6 +323,20 @@ return [
             'message' => 'Repayment of ' . money($d['amount']) . " received on {$l['loan_no']}." . ($r['closed'] ? ' 🎉 The loan is now fully paid.' : ' Balance ' . money($r['balance']) . '.'),
             'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => member_name($l), 'account' => $l['loan_no'], 'type' => 'Loan Repayment'],
         ];
+    },
+
+    'reverse_repayment' => function () {
+        post_only();
+        Auth::authorize('loans.reverse');
+        $d = Validator::make($_POST, ['transaction_id' => 'required|integer', 'reason' => 'required|string|min:3|max:200']);
+        $t = DB::row("SELECT * FROM transactions WHERE id = ? AND type = 'loan_repayment'", [$d['transaction_id']]);
+        if (!$t) {
+            throw new AppError('Repayment not found.', 404);
+        }
+        loan_scoped((int) $t['account_id']);
+        $rev = LoanService::reverseRepayment((int) $t['id'], $d['reason']);
+        audit('reverse', 'loan', $t['account_id'], "Reversed repayment {$t['txn_ref']} (" . money($t['amount']) . "): {$d['reason']}");
+        return ['message' => "Repayment {$t['txn_ref']} reversed (" . $rev['ref'] . ")."];
     },
 
     'write_off' => function () {

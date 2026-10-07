@@ -26,6 +26,7 @@ return [
     'loans.repay'          => ['manager', 'loan_officer', 'teller'],
     'loans.products'       => ['manager'],
     'loans.writeoff'       => [],
+    'loans.reverse'        => [],
 
     'transactions.view'    => ['manager', 'teller', 'accountant'],
     'transactions.reverse' => [],
@@ -34,6 +35,12 @@ return [
     'expenses.manage'      => ['manager', 'accountant'],
 
     'reports.view'         => ['manager', 'accountant'],
+
+    'accounting.view'      => ['manager', 'accountant'],
+    'accounting.journal'   => ['accountant'],
+    'accounting.close'     => [],
+    'distributions.prepare' => ['manager', 'accountant'],
+    'distributions.post'   => ['manager'],
 
     'branches.manage'      => [],
     'users.manage'         => [],

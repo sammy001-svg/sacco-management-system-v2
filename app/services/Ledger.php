@@ -21,6 +21,9 @@ final class Ledger
         'penalty'            => 'Penalty',
         'expense'            => 'Expense',
         'reversal'           => 'Reversal',
+        'interest'           => 'Savings Interest',
+        'dividend'           => 'Dividend',
+        'write_off'          => 'Loan Write-off',
     ];
 
     public const METHODS = [
@@ -32,11 +35,24 @@ final class Ledger
     ];
 
     /** Types an authorised user may reverse from the ledger screen. */
-    public const REVERSIBLE = ['deposit', 'withdrawal', 'withdrawal_fee', 'share_purchase', 'registration_fee'];
+    public const REVERSIBLE = ['deposit', 'withdrawal', 'withdrawal_fee', 'share_purchase', 'registration_fee', 'loan_repayment'];
+
+    /** Whether a ledger row can be reversed from the ledger screen. */
+    public static function isReversible(array $t): bool
+    {
+        if ($t['status'] !== 'posted' || !in_array($t['type'], self::REVERSIBLE, true)) {
+            return false;
+        }
+        // Internal legs are reversed together with the operation they belong to.
+        return $t['payment_method'] !== 'internal' || $t['type'] === 'loan_repayment';
+    }
 
     /** @return array{id:int, ref:string} */
     public static function post(array $t): array
     {
+        $at = $t['at'] ?? now();
+        Accounting::assertOpen($at);
+
         $id = DB::insert('transactions', [
             'branch_id'      => $t['branch_id'] ?? null,
             'member_id'      => $t['member_id'] ?? null,
@@ -53,10 +69,15 @@ final class Ledger
             'status'         => 'posted',
             'reversal_of'    => $t['reversal_of'] ?? null,
             'created_by'     => $t['created_by'] ?? Auth::id(),
-            'created_at'     => $t['at'] ?? now(),
+            'created_at'     => $at,
         ]);
         $ref = self::ref($id);
         DB::query('UPDATE transactions SET txn_ref = ? WHERE id = ?', [$ref, $id]);
+
+        // Double entry: every ledger row gets its balanced journal immediately.
+        $row = DB::row('SELECT * FROM transactions WHERE id = ?', [$id]);
+        Accounting::postForTransaction($row, $t['gl'] ?? []);
+
         return ['id' => $id, 'ref' => $ref];
     }
 
@@ -69,9 +90,9 @@ final class Ledger
      * Reverse a posted transaction: restores the account balance and posts an
      * equal and opposite entry linked to the original.
      */
-    public static function reverse(int $id, string $reason): array
+    public static function reverse(int $id, string $reason, bool $allowInternal = false): array
     {
-        return DB::transaction(function () use ($id, $reason) {
+        return DB::transaction(function () use ($id, $reason, $allowInternal) {
             $t = DB::row('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [$id]);
             if (!$t) {
                 throw new AppError('Transaction not found.', 404);
@@ -79,8 +100,11 @@ final class Ledger
             if ($t['status'] === 'reversed') {
                 throw new AppError('This transaction has already been reversed.');
             }
-            if (!in_array($t['type'], self::REVERSIBLE, true) || $t['payment_method'] === 'internal') {
-                throw new AppError('This type of transaction cannot be reversed from the ledger. Loan entries are corrected from the loan record.');
+            if ($t['type'] === 'loan_repayment') {
+                return LoanService::reverseRepayment($id, $reason);
+            }
+            if (!in_array($t['type'], self::REVERSIBLE, true) || ($t['payment_method'] === 'internal' && !$allowInternal)) {
+                throw new AppError('This type of transaction cannot be reversed from the ledger. It is corrected together with the operation it belongs to.');
             }
 
             $amount = (float) $t['amount'];

@@ -262,12 +262,14 @@ final class DemoSeeder
                         continue;
                     }
                     $amount = max(100, round(mt_rand($min, $max) * $scale / 100) * 100);
+                    $glId = Accounting::expenseAccount(null, $cat);
                     $tx = Ledger::post([
                         'branch_id' => $b, 'account_type' => 'expense', 'type' => 'expense', 'amount' => $amount,
                         'flow' => 'out', 'payment_method' => 'bank', 'narration' => "$cat expense", 'at' => "$date 12:00:00",
+                        'gl' => ['gl_account_id' => $glId],
                     ]);
                     DB::insert('expenses', [
-                        'branch_id' => $b, 'category' => $cat, 'payee' => $cat === 'Salaries' ? 'Staff payroll' : 'Supplier',
+                        'branch_id' => $b, 'category' => $cat, 'gl_account_id' => $glId, 'payee' => $cat === 'Salaries' ? 'Staff payroll' : 'Supplier',
                         'amount' => $amount, 'description' => "$cat for " . date('F Y', strtotime($date)), 'payment_method' => 'bank',
                         'expense_date' => $date, 'transaction_id' => $tx['id'], 'created_by' => Auth::id(), 'created_at' => "$date 12:00:00",
                     ]);

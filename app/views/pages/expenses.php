@@ -3,8 +3,9 @@ defined('SACCO') or exit;
 $canManage = Auth::can('expenses.manage');
 $ownBranch = Auth::user()['branch_id'] ?? null;
 $branches = DB::all("SELECT id, name FROM branches WHERE status = 'active' ORDER BY id");
-$categories = ['Salaries', 'Rent', 'Utilities', 'Stationery', 'Transport', 'Marketing', 'ICT & Software', 'Bank Charges', 'Repairs & Maintenance', 'Insurance', 'Professional Fees', 'Meetings & AGM', 'Training', 'Security', 'Other'];
-$categories = array_values(array_unique([...$categories, ...array_column(DB::all('SELECT DISTINCT category FROM expenses ORDER BY category'), 'category')]));
+// Expense categories are the general ledger's expense accounts.
+$expenseAccounts = DB::all("SELECT id, code, name FROM gl_accounts WHERE type = 'expense' AND status = 'active' AND (system_key IS NULL OR system_key = 'general_expense') ORDER BY code");
+$categories = array_values(array_unique([...array_column($expenseAccounts, 'name'), ...array_column(DB::all('SELECT DISTINCT category FROM expenses ORDER BY category'), 'category')]));
 ?>
 <div class="page-head">
   <div>
@@ -44,7 +45,7 @@ $categories = array_values(array_unique([...$categories, ...array_column(DB::all
     <div class="modal-body">
       <input type="hidden" name="id">
       <div class="form-grid">
-        <div class="field"><label>Category <span class="req">*</span></label><input class="input" name="category" list="expenseCats" required maxlength="60" placeholder="Choose or type…"><datalist id="expenseCats"><?php foreach ($categories as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist></div>
+        <div class="field"><label>Expense account <span class="req">*</span></label><select class="select" name="gl_account_id" required><option value="">Choose…</option><?php foreach ($expenseAccounts as $a): ?><option value="<?= (int) $a['id'] ?>"><?= e($a['code'] . ' · ' . $a['name']) ?></option><?php endforeach; ?></select><div class="field-hint">Posts to this account in the general ledger.</div></div>
         <div class="field"><label>Date <span class="req">*</span></label><input class="input" type="date" name="expense_date" required data-default="today" max="<?= today() ?>"></div>
         <div class="field"><label>Amount <span class="req">*</span></label><div class="input-group"><span class="addon"><?= e(currency()) ?></span><input class="input input-amount" type="number" name="amount" min="1" step="0.01" required></div></div>
         <div class="field"><label>Payee</label><input class="input" name="payee" maxlength="120" placeholder="Supplier / person paid"></div>

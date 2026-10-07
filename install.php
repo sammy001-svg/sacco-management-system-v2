@@ -7,6 +7,7 @@
  */
 require __DIR__ . '/app/bootstrap.php';
 require __DIR__ . '/database/DemoSeeder.php';
+require __DIR__ . '/database/Migrator.php';
 
 function install_run(array $in, ?callable $log = null): void
 {
@@ -17,13 +18,8 @@ function install_run(array $in, ?callable $log = null): void
     $server->exec("CREATE DATABASE IF NOT EXISTS `{$c['name']}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     $log("Database `{$c['name']}` ready.");
 
-    $sql = (string) file_get_contents(__DIR__ . '/database/schema.sql');
-    $sql = preg_replace('/^\s*--.*$/m', '', $sql);
-    foreach (preg_split('/;\s*(\r?\n|$)/', $sql) as $stmt) {
-        if (trim($stmt) !== '') {
-            DB::pdo()->exec($stmt);
-        }
-    }
+    // Schema, chart of accounts and version stamp.
+    Migrator::run($log);
     $log('Tables and reference data created.');
 
     if (!empty($in['sacco'])) {

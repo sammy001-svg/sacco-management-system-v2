@@ -81,8 +81,8 @@ return [
         );
         $canReverse = Auth::can('transactions.reverse');
         foreach ($res['data'] as &$r) {
-            $r['reversible'] = $canReverse && $r['status'] === 'posted'
-                && in_array($r['type'], Ledger::REVERSIBLE, true) && $r['payment_method'] !== 'internal';
+            $r['reversible'] = $canReverse && Ledger::isReversible($r)
+                && ($r['type'] !== 'loan_repayment' || Auth::can('loans.reverse'));
         }
         return $res;
     },

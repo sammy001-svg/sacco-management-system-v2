@@ -103,8 +103,7 @@ return [
 
     'categories' => function () {
         Auth::authorize('expenses.view');
-        $used = array_column(DB::all('SELECT DISTINCT category FROM expenses ORDER BY category'), 'category');
-        return ['data' => array_values(array_unique([...EXPENSE_CATEGORIES, ...$used]))];
+        return ['data' => DB::all("SELECT id, code, name FROM gl_accounts WHERE type = 'expense' AND status = 'active' AND (system_key IS NULL OR system_key = 'general_expense') ORDER BY code")];
     },
 
     'save' => function () {
@@ -113,14 +112,19 @@ return [
         $id = input_int('id');
         $d = Validator::make($_POST, [
             'branch_id'      => 'required|integer|exists:branches,id',
-            'category'       => 'required|string|max:60',
+            'gl_account_id'  => 'required|integer',
             'payee'          => 'nullable|string|max:120',
             'amount'         => 'required|numeric|min:1',
             'description'    => 'nullable|string|max:255',
             'payment_method' => 'required|in:cash,mobile_money,bank,cheque',
             'payment_ref'    => 'nullable|string|max:80',
             'expense_date'   => 'required|date',
-        ]);
+        ], ['gl_account_id' => 'Expense account']);
+        $acct = DB::row("SELECT id, name FROM gl_accounts WHERE id = ? AND type = 'expense' AND status = 'active'", [$d['gl_account_id']]);
+        if (!$acct) {
+            throw new ValidationError(['gl_account_id' => 'Choose an active expense account.']);
+        }
+        $d['category'] = $acct['name'];
         if ($own = Auth::user()['branch_id']) {
             $d['branch_id'] = (int) $own;
         }
@@ -134,12 +138,14 @@ return [
                 'flow' => 'out', 'payment_method' => $d['payment_method'], 'payment_ref' => $d['payment_ref'],
                 'narration' => "{$d['category']}: " . ($d['description'] ?: ($d['payee'] ?: 'expense')),
                 'at' => $d['expense_date'] === today() ? now() : "{$d['expense_date']} 12:00:00",
+                'gl' => ['gl_account_id' => $d['gl_account_id']],
             ])['id'];
 
             if ($id) {
                 $e = expense_scoped($id);
                 $moneyChanged = (float) $e['amount'] !== (float) $d['amount'] || $e['payment_method'] !== $d['payment_method']
-                    || (int) $e['branch_id'] !== (int) $d['branch_id'] || $e['expense_date'] !== $d['expense_date'];
+                    || (int) $e['branch_id'] !== (int) $d['branch_id'] || $e['expense_date'] !== $d['expense_date']
+                    || (int) $e['gl_account_id'] !== (int) $d['gl_account_id'];
                 if ($moneyChanged) {
                     expense_reverse_ledger($e, 'expense amended');
                     $d['transaction_id'] = $post();

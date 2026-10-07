@@ -391,20 +391,24 @@ final class LoanService
 
             $at = $o['at'] ?? now();
             $fromSavings = ($o['source'] ?? 'cash') === 'savings';
+            $paymentRef = $o['payment_ref'] ?? null;
             if ($fromSavings) {
                 $accId = (int) ($o['savings_account_id'] ?? 0) ?: SavingsService::defaultAccountId((int) $loan['member_id']);
                 if (!$accId) {
                     throw new AppError('The member has no savings account to pay from.');
                 }
-                SavingsService::withdraw($accId, $amount, [
+                $w = SavingsService::withdraw($accId, $amount, [
                     'member_id' => $loan['member_id'], 'flow' => 'none', 'payment_method' => 'internal', 'no_fee' => true,
                     'narration' => "Repayment of {$loan['loan_no']}", 'at' => $at,
                 ]);
+                // Links the repayment to its savings leg so a reversal can undo both.
+                $paymentRef = $w['transaction']['ref'];
             }
 
-            // Allocate across installments, oldest first.
+            // Allocate across installments, oldest first: penalty → interest → principal.
             $left = $amount;
             $alloc = ['principal' => 0.0, 'interest' => 0.0, 'penalty' => 0.0];
+            $perRow = [];
             $payDate = substr($at, 0, 10);
             $rows = DB::all("SELECT * FROM loan_schedules WHERE loan_id = ? AND status <> 'paid' ORDER BY installment_no FOR UPDATE", [$id]);
 
@@ -413,25 +417,26 @@ final class LoanService
                     break;
                 }
                 $paid = ['penalty' => (float) $s['penalty_paid'], 'interest' => (float) $s['interest_paid'], 'principal' => (float) $s['principal_paid']];
+                $took = ['penalty' => 0.0, 'interest' => 0.0, 'principal' => 0.0];
                 foreach (['penalty', 'interest', 'principal'] as $part) {
                     $owed = round((float) $s[$part . '_due'] - $paid[$part], 2);
                     $take = min($left, max(0, $owed));
                     if ($take > 0) {
                         $paid[$part] = round($paid[$part] + $take, 2);
+                        $took[$part] = $take;
                         $alloc[$part] += $take;
                         $left = round($left - $take, 2);
                     }
                 }
-                $remaining = round((float) $s['penalty_due'] + (float) $s['interest_due'] + (float) $s['principal_due']
-                    - $paid['penalty'] - $paid['interest'] - $paid['principal'], 2);
-                $status = $remaining <= 0 ? 'paid' : ($s['due_date'] < $payDate ? 'overdue' : 'partial');
-
+                if (array_sum($took) > 0) {
+                    $perRow[] = ['schedule_id' => $s['id']] + $took;
+                }
                 DB::update('loan_schedules', [
                     'penalty_paid'   => $paid['penalty'],
                     'interest_paid'  => $paid['interest'],
                     'principal_paid' => $paid['principal'],
-                    'status'         => $status,
-                    'paid_at'        => $status === 'paid' ? $at : null,
+                    'status'         => self::installmentStatus($s, $paid, $payDate),
+                    'paid_at'        => self::installmentStatus($s, $paid, $payDate) === 'paid' ? $at : null,
                 ], 'id = ?', [$s['id']]);
             }
 
@@ -448,6 +453,7 @@ final class LoanService
             }
 
             $method = $fromSavings ? 'internal' : ($o['payment_method'] ?? 'cash');
+            $alloc = array_map(fn($v) => round($v, 2), $alloc);
             $tx = Ledger::post([
                 'branch_id'      => $loan['branch_id'],
                 'member_id'      => $loan['member_id'],
@@ -458,25 +464,150 @@ final class LoanService
                 'balance_after'  => max(0, $newBalance),
                 'flow'           => $fromSavings ? 'none' : 'in',
                 'payment_method' => $method,
-                'payment_ref'    => $o['payment_ref'] ?? null,
+                'payment_ref'    => $paymentRef,
                 'narration'      => "Repayment of {$loan['loan_no']}" . ($closed ? ' — loan cleared' : ''),
                 'at'             => $at,
+                'gl'             => ['allocation' => $alloc],
             ]);
 
-            DB::insert('loan_repayments', [
+            $repaymentId = DB::insert('loan_repayments', [
                 'loan_id'        => $id,
                 'transaction_id' => $tx['id'],
                 'amount'         => $amount,
-                'principal_paid' => round($alloc['principal'], 2),
-                'interest_paid'  => round($alloc['interest'], 2),
-                'penalty_paid'   => round($alloc['penalty'], 2),
+                'principal_paid' => $alloc['principal'],
+                'interest_paid'  => $alloc['interest'],
+                'penalty_paid'   => $alloc['penalty'],
                 'payment_method' => $method,
-                'payment_ref'    => $o['payment_ref'] ?? null,
+                'payment_ref'    => $paymentRef,
                 'created_by'     => Auth::id(),
                 'created_at'     => $at,
             ]);
+            self::saveAllocations($repaymentId, $perRow);
 
             return ['transaction' => $tx, 'balance' => max(0, $newBalance), 'closed' => $closed, 'allocation' => $alloc];
+        });
+    }
+
+    /** Installment status from what has been paid and the due date. */
+    private static function installmentStatus(array $s, array $paid, string $asOf): string
+    {
+        $due = (float) $s['principal_due'] + (float) $s['interest_due'] + (float) $s['penalty_due'];
+        $remaining = round($due - $paid['principal'] - $paid['interest'] - $paid['penalty'], 2);
+        if ($remaining <= 0) {
+            return 'paid';
+        }
+        if ($s['due_date'] < $asOf) {
+            return 'overdue';
+        }
+        return array_sum($paid) > 0 ? 'partial' : 'pending';
+    }
+
+    public static function saveAllocations(int $repaymentId, array $rows): void
+    {
+        if (!$rows) {
+            return;
+        }
+        $values = [];
+        $params = [];
+        foreach ($rows as $r) {
+            $values[] = '(?,?,?,?,?)';
+            array_push($params, $repaymentId, $r['schedule_id'], round($r['principal'], 2), round($r['interest'], 2), round($r['penalty'], 2));
+        }
+        DB::query('INSERT INTO loan_repayment_allocations (repayment_id, schedule_id, principal, interest, penalty) VALUES ' . implode(',', $values), $params);
+    }
+
+    /**
+     * Reverse a loan repayment exactly: the installments it paid are reopened,
+     * the loan balance restored, money taken from savings returned, and the
+     * ledger and journal reversed. Repayments are undone newest-first.
+     */
+    public static function reverseRepayment(int $txnId, string $reason): array
+    {
+        return DB::transaction(function () use ($txnId, $reason) {
+            $t = DB::row('SELECT * FROM transactions WHERE id = ? FOR UPDATE', [$txnId]);
+            if (!$t || $t['type'] !== 'loan_repayment') {
+                throw new AppError('Repayment not found.', 404);
+            }
+            if ($t['status'] !== 'posted') {
+                throw new AppError('This repayment has already been reversed.');
+            }
+            $rep = DB::row('SELECT * FROM loan_repayments WHERE transaction_id = ? FOR UPDATE', [$txnId]);
+            if (!$rep) {
+                throw new AppError('Repayment record not found.', 404);
+            }
+            $loan = self::lock((int) $rep['loan_id']);
+            if (!in_array($loan['status'], ['active', 'closed'], true)) {
+                throw new AppError("Repayments on a {$loan['status']} loan cannot be reversed.");
+            }
+            $latest = (int) DB::value("SELECT MAX(id) FROM loan_repayments WHERE loan_id = ? AND status = 'posted'", [$loan['id']]);
+            if ($latest !== (int) $rep['id']) {
+                throw new AppError('Only the most recent repayment on a loan can be reversed. Reverse the later repayments first.');
+            }
+            $allocs = DB::all('SELECT * FROM loan_repayment_allocations WHERE repayment_id = ?', [$rep['id']]);
+            if (!$allocs) {
+                throw new AppError('This repayment has no installment breakdown, so it cannot be reversed automatically. Correct it with a manual journal.');
+            }
+
+            $today = today();
+            foreach ($allocs as $a) {
+                $s = DB::row('SELECT * FROM loan_schedules WHERE id = ? FOR UPDATE', [$a['schedule_id']]);
+                $paid = [
+                    'principal' => round((float) $s['principal_paid'] - (float) $a['principal'], 2),
+                    'interest'  => round((float) $s['interest_paid'] - (float) $a['interest'], 2),
+                    'penalty'   => round((float) $s['penalty_paid'] - (float) $a['penalty'], 2),
+                ];
+                $status = self::installmentStatus($s, $paid, $today);
+                DB::update('loan_schedules', [
+                    'principal_paid' => max(0, $paid['principal']),
+                    'interest_paid'  => max(0, $paid['interest']),
+                    'penalty_paid'   => max(0, $paid['penalty']),
+                    'status'         => $status,
+                    'paid_at'        => $status === 'paid' ? $s['paid_at'] : null,
+                ], 'id = ?', [$s['id']]);
+            }
+
+            $amount = (float) $rep['amount'];
+            $newBalance = round((float) $loan['balance'] + $amount, 2);
+            DB::update('loans', [
+                'amount_paid' => round((float) $loan['amount_paid'] - $amount, 2),
+                'balance'     => $newBalance,
+                'status'      => 'active',
+                'closed_at'   => null,
+            ], 'id = ?', [$loan['id']]);
+            if ($loan['status'] === 'closed') {
+                DB::query("UPDATE loan_guarantors SET status = 'active' WHERE loan_id = ? AND status = 'released'", [$loan['id']]);
+            }
+            DB::query("UPDATE loan_repayments SET status = 'reversed' WHERE id = ?", [$rep['id']]);
+
+            // Paid from savings? Return the money to the member's account.
+            if ($t['payment_method'] === 'internal') {
+                $w = DB::value(
+                    "SELECT id FROM transactions WHERE type = 'withdrawal' AND status = 'posted' AND payment_method = 'internal'
+                     AND member_id = ? AND amount = ? AND (txn_ref = ? OR (narration = ? AND created_at = ?)) ORDER BY id DESC LIMIT 1",
+                    [$t['member_id'], $t['amount'], (string) $t['payment_ref'], "Repayment of {$loan['loan_no']}", $t['created_at']]
+                );
+                if ($w) {
+                    Ledger::reverse((int) $w, "Loan repayment {$t['txn_ref']} reversed", true);
+                }
+            }
+
+            $rev = Ledger::post([
+                'branch_id'      => $t['branch_id'],
+                'member_id'      => $t['member_id'],
+                'account_type'   => 'loan',
+                'account_id'     => $loan['id'],
+                'type'           => 'reversal',
+                'amount'         => $amount,
+                'balance_after'  => $newBalance,
+                'flow'           => ['in' => 'out', 'out' => 'in'][$t['flow']] ?? 'none',
+                'payment_method' => $t['payment_method'],
+                'payment_ref'    => $t['txn_ref'],
+                'narration'      => "Reversal of {$t['txn_ref']}: $reason",
+                'reversal_of'    => $t['id'],
+            ]);
+            DB::query("UPDATE transactions SET status = 'reversed' WHERE id = ?", [$t['id']]);
+
+            return $rev;
         });
     }
 
@@ -487,10 +618,20 @@ final class LoanService
             if ($loan['status'] !== 'active') {
                 throw new AppError('Only active loans can be written off.');
             }
+            // Only principal sits in Loans to Members (interest is income when paid).
+            $principal = round((float) DB::value('SELECT COALESCE(SUM(principal_due - principal_paid), 0) FROM loan_schedules WHERE loan_id = ?', [$id]), 2);
             DB::update('loans', [
                 'status' => 'written_off', 'closed_at' => now(),
                 'approval_notes' => mb_substr('Written off: ' . $reason, 0, 255),
             ], 'id = ?', [$id]);
+            if ($principal > 0) {
+                Ledger::post([
+                    'branch_id' => $loan['branch_id'], 'member_id' => $loan['member_id'],
+                    'account_type' => 'loan', 'account_id' => $id, 'type' => 'write_off', 'amount' => $principal,
+                    'balance_after' => $loan['balance'], 'flow' => 'none', 'payment_method' => 'internal',
+                    'narration' => "Write-off of {$loan['loan_no']}: $reason",
+                ]);
+            }
         });
     }
 

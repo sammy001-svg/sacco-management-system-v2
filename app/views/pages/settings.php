@@ -10,6 +10,7 @@ $groups = [
     'financial' => ['Financial', 'currency-exchange', 'Currency, share pricing and membership fees.', [
         'currency' => ['Currency code', 'text', true], 'share_price' => ['Share price', 'number', true],
         'min_share_capital' => ['Minimum share capital', 'number', true], 'registration_fee' => ['Registration fee', 'number', true],
+        'wht_interest_rate' => ['Withholding tax on savings interest (%)', 'number', true], 'wht_dividend_rate' => ['Withholding tax on dividends (%)', 'number', true],
     ]],
     'operations' => ['Operations', 'gear-wide-connected', 'Numbering and loan penalty rules.', [
         'member_no_prefix' => ['Member number prefix', 'text', true], 'penalty_grace_days' => ['Penalty grace period (days)', 'number', true],

@@ -17,11 +17,13 @@ require APP_PATH . '/core/helpers.php';
 require APP_PATH . '/core/DB.php';
 require APP_PATH . '/core/Auth.php';
 require APP_PATH . '/core/Validator.php';
+require APP_PATH . '/services/Accounting.php';
 require APP_PATH . '/services/Ledger.php';
 require APP_PATH . '/services/MemberService.php';
 require APP_PATH . '/services/SavingsService.php';
 require APP_PATH . '/services/ShareService.php';
 require APP_PATH . '/services/LoanService.php';
+require APP_PATH . '/services/DistributionService.php';
 
 if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
