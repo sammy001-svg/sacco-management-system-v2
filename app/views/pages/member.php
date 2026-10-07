@@ -11,7 +11,7 @@ $statusActions = array_diff(MemberService::STATUSES, [$m['status'], 'pending']);
 
 <section class="profile-hero">
   <div class="row">
-    <span class="avatar xl" data-hue="<?= crc32($name) % 6 ?: '' ?>"><?= e(initials($name)) ?></span>
+    <span class="avatar xl" data-hero-avatar data-hue="<?= crc32($name) % 6 ?: '' ?>"><?= e(initials($name)) ?></span>
     <div style="min-width:0">
       <div class="flex items-center gap-1 wrap"><h2><?= e($name) ?></h2><span class="badge"><?= e(label($m['status'])) ?></span></div>
       <div class="sub">
@@ -61,6 +61,7 @@ $statusActions = array_diff(MemberService::STATUSES, [$m['status'], 'pending']);
     <button class="tab" data-tab="tab-loans"><i class="bi bi-cash-stack"></i>Loans</button>
     <button class="tab" data-tab="tab-txns"><i class="bi bi-arrow-left-right"></i>Transactions</button>
     <button class="tab" data-tab="tab-guarantees"><i class="bi bi-shield-check"></i>Guarantees</button>
+    <button class="tab" data-tab="tab-docs"><i class="bi bi-folder2"></i>Documents</button>
     <button class="tab" data-tab="tab-profile"><i class="bi bi-person-vcard"></i>Profile</button>
   </div>
 
@@ -71,6 +72,14 @@ $statusActions = array_diff(MemberService::STATUSES, [$m['status'], 'pending']);
   <div class="tab-panel" id="tab-loans" data-group="member"><div id="memberLoans"></div></div>
   <div class="tab-panel" id="tab-txns" data-group="member"><div id="memberTxns"></div></div>
   <div class="tab-panel" id="tab-guarantees" data-group="member"><div class="list" data-guarantees></div></div>
+
+  <div class="tab-panel" id="tab-docs" data-group="member">
+    <div class="toolbar" style="justify-content:space-between">
+      <div class="kyc-list" data-kyc></div>
+      <?php if (Auth::can('members.manage')): ?><button class="btn btn-primary btn-sm" data-open="docModal"><i class="bi bi-cloud-upload"></i><span>Upload document</span></button><?php endif; ?>
+    </div>
+    <div class="doc-grid" data-docs></div>
+  </div>
 
   <div class="tab-panel" id="tab-profile" data-group="member"><div class="card-body">
     <div class="form-section">Personal</div>
@@ -96,6 +105,23 @@ $statusActions = array_diff(MemberService::STATUSES, [$m['status'], 'pending']);
     </div>
   </div></div>
 </section>
+
+<?php if (Auth::can('members.manage')): ?>
+<div class="modal" id="docModal" role="dialog" aria-modal="true" aria-hidden="true">
+  <form class="modal-dialog" data-api="documents/upload" novalidate>
+    <div class="modal-head"><div class="modal-icon"><i class="bi bi-cloud-upload"></i></div><div class="modal-title"><h3>Upload KYC document</h3><p>JPG, PNG, WEBP or PDF up to 5 MB. Stored privately, never publicly reachable.</p></div><button type="button" class="modal-close" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" name="member_id" data-keep value="<?= (int) $m['id'] ?>">
+      <div class="field"><label>Document type <span class="req">*</span></label><select class="select" name="type" required><option value="">Choose…</option>
+        <?php foreach (['photo' => 'Passport photo', 'id_front' => 'National ID — front', 'id_back' => 'National ID — back', 'signature' => 'Signature specimen', 'tax_pin' => 'Tax PIN certificate', 'payslip' => 'Payslip', 'other' => 'Other document'] as $k => $v): ?><option value="<?= $k ?>"><?= e($v) ?></option><?php endforeach; ?>
+      </select></div>
+      <div class="field"><label class="dropzone" data-dropzone><input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><i class="bi bi-image" style="font-size:30px"></i><div class="fw-bold mt-1" data-dz-label>Drop a file here or click to choose</div><div class="text-xs">On a phone you can take a photo directly</div></label><div class="field-error" data-error-for="file"></div></div>
+      <img data-dz-preview alt="" style="display:none;max-width:100%;max-height:220px;border-radius:12px;margin:0 auto">
+    </div>
+    <div class="modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary"><i class="bi bi-cloud-upload"></i><span>Upload</span></button></div>
+  </form>
+</div>
+<?php endif; ?>
 
 <?php ob_start(); ?>
 <script>
@@ -176,8 +202,47 @@ $statusActions = array_diff(MemberService::STATUSES, [$m['status'], 'pending']);
     const r = e.detail.route || '';
     if (r === 'members/save' || r === 'members/set_status') { setTimeout(() => location.reload(), 600); return; }
     loadSummary();
+    if (r === 'documents/upload') loadDocs();
   });
   loadSummary();
+  async function loadDocs() {
+    let r;
+    try { r = await A.get('documents/list', { member_id: memberId }); } catch (e) { return; }
+    const canManage = A.can('members.manage');
+    A.$('[data-kyc]').innerHTML = (r.kyc.complete ? '<span class="badge success">KYC complete</span>' : `<span class="badge warning">KYC incomplete · ${r.kyc.required.length - r.kyc.missing.length} of ${r.kyc.required.length}</span>`)
+      + r.kyc.required.map(t => `<span class="tag">${r.kyc.missing.includes(t) ? '<i class="bi bi-circle text-amber"></i>' : '<i class="bi bi-check-circle-fill text-green"></i>'}${A.esc(r.types[t])}</span>`).join('');
+    A.$('[data-tab="tab-docs"]').innerHTML = `<i class="bi bi-folder2"></i>Documents${r.kyc.complete ? '' : ' <span class="count" style="background:var(--warning-soft);color:var(--warning)">!</span>'}`;
+    A.$('[data-docs]').innerHTML = r.data.length ? r.data.map(d => {
+      const url = `api.php?r=documents/view&id=${d.id}`;
+      return `<div class="doc-card"><a class="doc-thumb" href="${url}" target="_blank" rel="noopener">${d.mime.startsWith('image/') ? `<img src="${url}" alt="${A.esc(r.types[d.type])}" loading="lazy">` : '<i class="bi bi-file-earmark-pdf"></i>'}</a>
+        <div class="doc-meta"><strong>${A.esc(r.types[d.type] || d.type)}</strong><span class="muted">${A.esc(d.original_name)}</span><div class="text-xs muted">${A.date(d.created_at)} · ${(d.size / 1024).toFixed(0)} KB${d.uploaded_by_name ? ' · ' + A.esc(d.uploaded_by_name) : ''}</div></div>
+        <div class="doc-actions"><a class="act" href="${url}&download=1" title="Download"><i class="bi bi-download"></i></a>${canManage ? `<button class="act danger" data-doc-del="${d.id}" title="Delete"><i class="bi bi-trash3"></i></button>` : ''}</div></div>`;
+    }).join('') : '<div class="empty" style="grid-column:1/-1"><div class="empty-icon"><i class="bi bi-folder2-open"></i></div><h4>No documents yet</h4><p>Upload a passport photo, ID copies and a signature specimen to complete KYC.</p></div>';
+    const photo = r.data.find(d => d.type === 'photo');
+    const hero = A.$('[data-hero-avatar]');
+    hero.classList.toggle('photo', !!photo);
+    hero.style.backgroundImage = photo ? `url('api.php?r=documents/view&id=${photo.id}')` : '';
+  }
+  document.addEventListener('click', async e => {
+    const d = e.target.closest('[data-doc-del]');
+    if (!d || !await A.confirm({ title: 'Delete this document?', confirmText: 'Delete document' })) return;
+    try { A.toast((await A.post('documents/delete', { id: d.dataset.docDel })).message); loadDocs(); } catch (err) { A.toast(err.message, 'error'); }
+  });
+  const dz = A.$('#docModal [data-dropzone]');
+  if (dz) {
+    const input = A.$('input', dz), lbl = A.$('[data-dz-label]', dz), prev = A.$('#docModal [data-dz-preview]');
+    const show = () => {
+      const f = input.files[0];
+      lbl.textContent = f ? f.name : 'Drop a file here or click to choose';
+      if (f && f.type.startsWith('image/')) { prev.src = URL.createObjectURL(f); prev.style.display = 'block'; } else { prev.style.display = 'none'; }
+    };
+    input.addEventListener('change', show);
+    ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; show(); } });
+    A.$('#docModal form').addEventListener('form:reset', show);
+  }
+  loadDocs();
 })();
 </script>
 <?php $pageScripts = ob_get_clean(); ?>

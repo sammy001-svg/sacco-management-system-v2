@@ -153,6 +153,29 @@ final class SavingsService
         });
     }
 
+    /** Same rules as withdraw(), without posting — used before queueing for approval. */
+    public static function checkWithdrawable(int $accountId, float $amount): void
+    {
+        $a = DB::row(
+            'SELECT a.balance, a.status, p.name AS product_name, p.min_balance, p.allow_withdrawal, p.withdrawal_fee
+             FROM savings_accounts a JOIN savings_products p ON p.id = a.product_id WHERE a.id = ?',
+            [$accountId]
+        );
+        if (!$a) {
+            throw new AppError('Savings account not found.', 404);
+        }
+        if ($a['status'] !== 'active') {
+            throw new AppError("This account is {$a['status']}; withdrawals are blocked.");
+        }
+        if (!(int) $a['allow_withdrawal']) {
+            throw new AppError("Withdrawals are not permitted on {$a['product_name']} accounts.");
+        }
+        $available = round((float) $a['balance'] - (float) $a['min_balance'] - (float) $a['withdrawal_fee'], 2);
+        if ($amount > $available + 0.0001) {
+            throw new ValidationError(['amount' => 'Insufficient funds. Available to withdraw: ' . money(max(0, $available)) . '.']);
+        }
+    }
+
     /** Active accounts of a member, for pickers. */
     public static function memberAccounts(int $memberId, bool $withdrawableOnly = false): array
     {

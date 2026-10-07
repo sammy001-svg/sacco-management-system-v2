@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS users (
   failed_logins  TINYINT UNSIGNED NOT NULL DEFAULT 0,
   locked_until   DATETIME NULL,
   last_login_at  DATETIME NULL,
+  totp_secret    VARCHAR(64) NULL,
+  totp_enabled   TINYINT(1) NOT NULL DEFAULT 0,
+  recovery_codes TEXT NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at     DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -334,6 +337,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   KEY idx_txn_account (account_type, account_id, created_at),
   KEY idx_txn_branch_date (branch_id, created_at),
   KEY idx_txn_payment_ref (payment_ref),
+  KEY idx_txn_user_date (created_by, created_at),
   -- Covering index: dashboard, statistics and report aggregates over date
   -- ranges are answered from the index alone, never touching table rows.
   KEY idx_txn_report (created_at, status, type, flow, payment_method, branch_id, amount)
@@ -487,6 +491,103 @@ CREATE TABLE IF NOT EXISTS distribution_lines (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- Operations & controls
+-- ---------------------------------------------------------------------
+
+-- Teller cash drawers: opened with a float, closed with a physical count.
+CREATE TABLE IF NOT EXISTS till_sessions (
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id            INT UNSIGNED NOT NULL,
+  branch_id          INT UNSIGNED NULL,
+  opened_at          DATETIME NOT NULL,
+  opening_float      DECIMAL(18,2) NOT NULL DEFAULT 0,
+  status             ENUM('open','closed') NOT NULL DEFAULT 'open',
+  closed_at          DATETIME NULL,
+  closed_by          INT UNSIGNED NULL,
+  expected_cash      DECIMAL(18,2) NULL,
+  counted_cash       DECIMAL(18,2) NULL,
+  variance           DECIMAL(18,2) NULL,
+  denominations      TEXT NULL,
+  notes              VARCHAR(255) NULL,
+  variance_entry_id  BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  KEY idx_till_user_status (user_id, status),
+  KEY idx_till_branch_date (branch_id, opened_at),
+  KEY idx_till_opened (opened_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Maker-checker: sensitive actions wait here until a second user approves.
+CREATE TABLE IF NOT EXISTS approval_requests (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  type          VARCHAR(30)  NOT NULL,
+  summary       VARCHAR(255) NOT NULL,
+  amount        DECIMAL(18,2) NULL,
+  payload       MEDIUMTEXT NOT NULL,
+  branch_id     INT UNSIGNED NULL,
+  member_id     BIGINT UNSIGNED NULL,
+  requested_by  INT UNSIGNED NOT NULL,
+  status        ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  decided_by    INT UNSIGNED NULL,
+  decided_at    DATETIME NULL,
+  note          VARCHAR(255) NULL,
+  result        VARCHAR(255) NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_approvals_status (status, created_at),
+  KEY idx_approvals_requester (requested_by, status),
+  KEY idx_approvals_branch (branch_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Bulk imports (member migration, payroll check-off): validated, then processed in chunks.
+CREATE TABLE IF NOT EXISTS imports (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  kind            ENUM('members','checkoff') NOT NULL,
+  filename        VARCHAR(190) NOT NULL,
+  meta            TEXT NULL,
+  total_rows      INT UNSIGNED NOT NULL DEFAULT 0,
+  valid_rows      INT UNSIGNED NOT NULL DEFAULT 0,
+  error_rows      INT UNSIGNED NOT NULL DEFAULT 0,
+  processed_rows  INT UNSIGNED NOT NULL DEFAULT 0,
+  failed_rows     INT UNSIGNED NOT NULL DEFAULT 0,
+  amount          DECIMAL(18,2) NOT NULL DEFAULT 0,
+  status          ENUM('validated','processing','completed','cancelled') NOT NULL DEFAULT 'validated',
+  created_by      INT UNSIGNED NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at    DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_imports_kind (kind, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS import_rows (
+  id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  import_id  INT UNSIGNED NOT NULL,
+  row_no     INT UNSIGNED NOT NULL,
+  data       TEXT NOT NULL,
+  status     ENUM('valid','error','done','failed') NOT NULL,
+  message    VARCHAR(255) NULL,
+  member_id  BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  KEY idx_import_rows (import_id, status, id),
+  CONSTRAINT fk_import_rows FOREIGN KEY (import_id) REFERENCES imports (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- KYC documents and photos (files live in storage/uploads, outside the web root rules).
+CREATE TABLE IF NOT EXISTS member_documents (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  member_id      BIGINT UNSIGNED NOT NULL,
+  type           VARCHAR(30)  NOT NULL,
+  original_name  VARCHAR(190) NOT NULL,
+  stored_name    VARCHAR(120) NOT NULL,
+  mime           VARCHAR(60)  NOT NULL,
+  size           INT UNSIGNED NOT NULL,
+  uploaded_by    INT UNSIGNED NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_docs_member (member_id, type),
+  CONSTRAINT fk_docs_member FOREIGN KEY (member_id) REFERENCES members (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- Audit trail
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -529,7 +630,13 @@ INSERT IGNORE INTO settings (`key`, `value`) VALUES
   ('penalty_grace_days', '3'),
   ('wht_interest_rate',  '0'),
   ('wht_dividend_rate',  '0'),
-  ('books_closed_through', '');
+  ('books_closed_through', ''),
+  ('require_till', '1'),
+  ('approval_withdrawal_limit', '100000'),
+  ('approval_journal_limit', '100000'),
+  ('approve_reversals', '1'),
+  ('approve_write_offs', '1'),
+  ('backup_keep', '14');
 
 INSERT IGNORE INTO savings_products (id, code, name, description, interest_rate, min_balance, allow_withdrawal, withdrawal_fee, is_default) VALUES
   (1, 'ORD', 'Ordinary Savings', 'Main member deposits account. Used for loan eligibility.', 4.000, 500.00, 1, 50.00, 1),

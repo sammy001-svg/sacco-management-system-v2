@@ -133,6 +133,11 @@ return [
         Auth::authorize('savings.transact');
         $d = Validator::make($_POST, ['account_id' => 'required|integer', 'amount' => 'required|numeric|min:1'] + payment_rules(), ['account_id' => 'Account']);
         $acc = savings_account_scoped($d['account_id']);
+        if (ApprovalService::needed('withdrawal', $d['amount'])) {
+            SavingsService::checkWithdrawable($d['account_id'], $d['amount']);
+            return ApprovalService::request('withdrawal', 'Withdraw ' . money($d['amount']) . " from {$acc['account_no']} ({$acc['first_name']} {$acc['last_name']})",
+                $d, (float) $d['amount'], (int) $acc['branch_id'], (int) $acc['member_id']);
+        }
         $r = SavingsService::withdraw($d['account_id'], $d['amount'], $d);
         audit('withdraw', 'savings_account', $d['account_id'], "Withdrawal {$r['transaction']['ref']} of " . money($d['amount']) . " from {$acc['account_no']}");
         $msg = 'Withdrawal of ' . money($d['amount']) . ' processed.';

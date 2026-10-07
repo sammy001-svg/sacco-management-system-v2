@@ -416,6 +416,80 @@
     apply: member => A.openForm('loanApplyModal', member ? { member_id: member } : null),
   };
 
+  /* ------------------------------------------------------------------
+   | Two-step login (TOTP) setup
+   * ---------------------------------------------------------------- */
+  const sec = $('#securityModal');
+  function loadQrLib() {
+    if (window.QRCode) return Promise.resolve();
+    return new Promise((ok, fail) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      s.onload = ok; s.onerror = fail;
+      document.head.appendChild(s);
+    });
+  }
+  async function securityView() {
+    const body = $('[data-sec-body]', sec), act = $('[data-sec-actions]', sec);
+    body.innerHTML = '<span class="skeleton"></span>';
+    act.innerHTML = '';
+    const st = (await A.get('security/status')).data;
+    if (st.enabled) {
+      body.innerHTML = `<div class="info-strip"><i class="bi bi-shield-check"></i><span><strong>Two-step login is on.</strong> ${st.recovery} unused recovery code(s) left.</span></div>
+        <div class="field"><label>Confirm your password to turn it off</label><input class="input" type="password" data-sec-password autocomplete="current-password"></div>`;
+      act.innerHTML = '<button class="btn btn-ghost" data-close>Close</button><button class="btn btn-danger" data-sec="disable"><span>Turn off</span></button>';
+    } else {
+      body.innerHTML = `<p class="mb-2">Protect your account even if your password leaks. You need an authenticator app such as Google Authenticator, Microsoft Authenticator or Authy.</p>
+        <div class="info-strip warning"><i class="bi bi-shield-exclamation"></i><span>Two-step login is <strong>off</strong> for your account.</span></div>`;
+      act.innerHTML = '<button class="btn btn-ghost" data-close>Not now</button><button class="btn btn-primary" data-sec="setup"><i class="bi bi-qr-code"></i><span>Set up</span></button>';
+    }
+  }
+  async function securitySetup() {
+    const body = $('[data-sec-body]', sec), act = $('[data-sec-actions]', sec);
+    const d = (await A.post('security/setup')).data;
+    body.innerHTML = `<p class="text-sm mb-2"><strong>1.</strong> Scan this code with your authenticator app.</p><div class="qr-box" data-qr></div>
+      <p class="text-xs muted text-right mb-2" style="text-align:center">Can't scan? Enter this key: <code style="word-break:break-all">${esc(d.secret.replace(/(.{4})/g, '$1 ').trim())}</code></p>
+      <p class="text-sm mb-1"><strong>2.</strong> Enter the 6-digit code the app shows.</p>
+      <div class="field"><input class="input input-amount" data-sec-code inputmode="numeric" maxlength="7" placeholder="123456" autocomplete="one-time-code"><div class="field-error" data-sec-err></div></div>`;
+    act.innerHTML = '<button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" data-sec="enable"><i class="bi bi-check2-circle"></i><span>Verify &amp; turn on</span></button>';
+    try { await loadQrLib(); new window.QRCode($('[data-qr]', body), { text: d.uri, width: 180, height: 180, correctLevel: window.QRCode.CorrectLevel.M }); }
+    catch (e) { $('[data-qr]', body).outerHTML = '<p class="muted text-sm">QR code unavailable offline — use the key below.</p>'; }
+    setTimeout(() => $('[data-sec-code]', body)?.focus(), 80);
+  }
+  if (sec) {
+    document.addEventListener('click', e => {
+      if (!e.target.closest('[data-open-security]')) return;
+      A.Modal.open(sec);
+      securityView().catch(err => A.toast(err.message, 'error'));
+    });
+    sec.addEventListener('click', async e => {
+      const b = e.target.closest('[data-sec]');
+      if (!b) return;
+      b.disabled = true;
+      try {
+        if (b.dataset.sec === 'setup') await securitySetup();
+        if (b.dataset.sec === 'enable') {
+          const r = await A.post('security/enable', { code: $('[data-sec-code]', sec).value });
+          $('[data-sec-body]', sec).innerHTML = `<div class="info-strip"><i class="bi bi-shield-check"></i><span>${esc(r.message)} Save these recovery codes somewhere safe. Each works once if you lose your phone. They will not be shown again.</span></div>
+            <div class="recovery-codes">${r.data.recovery_codes.map(c => `<span>${esc(c)}</span>`).join('')}</div>`;
+          $('[data-sec-actions]', sec).innerHTML = '<button class="btn btn-ghost" data-copy-codes><i class="bi bi-clipboard"></i><span>Copy</span></button><button class="btn btn-primary" data-close>I have saved them</button>';
+          sec.dataset.codes = r.data.recovery_codes.join('\n');
+        }
+        if (b.dataset.sec === 'disable') {
+          A.toast((await A.post('security/disable', { password: $('[data-sec-password]', sec).value })).message);
+          securityView();
+        }
+      } catch (err) {
+        const slot = $('[data-sec-err]', sec);
+        if (slot && err.errors) slot.textContent = Object.values(err.errors)[0];
+        else A.toast(err.message, 'error');
+      } finally { b.disabled = false; }
+    });
+    sec.addEventListener('click', e => {
+      if (e.target.closest('[data-copy-codes]')) navigator.clipboard?.writeText(sec.dataset.codes || '').then(() => A.toast('Recovery codes copied.'));
+    });
+  }
+
   A.members = {
     async edit(id) {
       try { A.openForm('memberModal', (await A.get('members/get', { id })).data); }

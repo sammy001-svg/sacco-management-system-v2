@@ -9,6 +9,9 @@ $pendingLoans = Auth::can('loans.approve')
     ? (int) DB::value("SELECT COUNT(*) FROM loans WHERE status = 'pending'" . ($user['branch_id'] ? ' AND branch_id = ' . (int) $user['branch_id'] : ''))
     : 0;
 
+$pendingApprovals = Auth::can('approvals.decide') ? ApprovalService::pendingCount() : 0;
+$till = Auth::can('tills.use') ? TillService::openFor((int) $user['id']) : null;
+
 $nav = [
     'Overview'       => [['dashboard', 'Dashboard', 'grid-1x2', 'dashboard.view']],
     'Membership'     => [['members', 'Members', 'people', 'members.view']],
@@ -19,6 +22,11 @@ $nav = [
         ['loan_products', 'Loan Products', 'box-seam', 'loans.view'],
         ['transactions', 'Transactions', 'arrow-left-right', 'transactions.view'],
         ['expenses', 'Expenses', 'wallet2', 'expenses.view'],
+    ],
+    'Operations'     => [
+        ['tills', 'Teller Tills', 'safe2', 'tills.use'],
+        ['approvals', 'Approvals', 'check2-square', 'dashboard.view', $pendingApprovals],
+        ['imports', 'Imports', 'cloud-upload', 'imports.checkoff'],
     ],
     'Accounting'     => [
         ['statements', 'Financial Statements', 'file-earmark-bar-graph', 'accounting.view'],
@@ -33,6 +41,7 @@ $nav = [
         ['users', 'Users & Roles', 'person-gear', 'users.manage'],
         ['settings', 'Settings', 'sliders', 'settings.manage'],
         ['audit', 'Audit Trail', 'shield-check', 'audit.view'],
+        ['backups', 'Backups', 'database-down', 'backups.manage'],
     ],
 ];
 
@@ -125,6 +134,9 @@ $asset = fn(string $p) => $p . '?v=' . @filemtime(APP_ROOT . '/' . $p);
       <?php endif; ?>
 
       <div class="topbar-actions">
+        <?php if (Auth::can('tills.use')): ?>
+          <a class="till-chip <?= $till ? 'open' : '' ?> hide-sm" href="index.php?page=tills" title="Teller till"><i class="bi bi-safe2"></i><span><?= $till ? 'Till open' : 'Till closed' ?></span></a>
+        <?php endif; ?>
         <?php if ($quick): ?>
         <div class="dropdown">
           <button class="btn btn-primary" type="button" data-dropdown-toggle><i class="bi bi-plus-lg"></i><span class="hide-sm">Quick action</span></button>
@@ -158,6 +170,7 @@ $asset = fn(string $p) => $p . '?v=' . @filemtime(APP_ROOT . '/' . $p);
           <div class="dropdown-menu">
             <div class="dropdown-head"><?= e($user['email']) ?></div>
             <button class="dropdown-item" type="button" data-open="profileModal" data-prefill="<?= e(json_encode(['name' => $user['name'], 'phone' => $user['phone']])) ?>"><i class="bi bi-person-circle"></i>My profile &amp; password</button>
+            <button class="dropdown-item" type="button" data-open-security><i class="bi bi-shield-lock"></i>Two-step login</button>
             <?php if (Auth::can('settings.manage')): ?><a class="dropdown-item" href="index.php?page=settings"><i class="bi bi-sliders"></i>System settings</a><?php endif; ?>
             <button class="dropdown-item" type="button" data-theme-toggle><i class="bi bi-circle-half"></i>Switch theme</button>
             <div class="dropdown-divider"></div>
@@ -171,8 +184,8 @@ $asset = fn(string $p) => $p . '?v=' . @filemtime(APP_ROOT . '/' . $p);
     </header>
 
     <main class="content" id="content">
-      <?php if ($user['role'] === 'admin' && (int) setting('db_version', 1) < 2): ?>
-        <div class="info-strip warning"><i class="bi bi-database-exclamation"></i><span><strong>Database upgrade required.</strong> Run <code>php database/migrate.php</code> to enable accounting.</span></div>
+      <?php if ($user['role'] === 'admin' && (int) setting('db_version', 1) < APP_DB_VERSION): ?>
+        <div class="info-strip warning"><i class="bi bi-database-exclamation"></i><span><strong>Database upgrade required.</strong> Run <code>php database/migrate.php</code> to finish the upgrade.</span></div>
       <?php endif; ?>
       <?= $content ?>
     </main>

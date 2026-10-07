@@ -122,6 +122,13 @@ return [
         if (!$t || ($own && (int) $own !== (int) $t['branch_id'])) {
             throw new AppError('Transaction not found.', 404);
         }
+        if ($t['status'] !== 'posted' || !Ledger::isReversible($t)) {
+            throw new AppError('This transaction cannot be reversed.');
+        }
+        if (ApprovalService::needed('reversal')) {
+            return ApprovalService::request('reversal', "Reverse {$t['txn_ref']} — " . (Ledger::TYPES[$t['type']] ?? $t['type']) . ' of ' . money($t['amount']) . ": {$d['reason']}",
+                ['transaction_id' => (int) $t['id'], 'reason' => $d['reason']], (float) $t['amount'], $t['branch_id'] ? (int) $t['branch_id'] : null, $t['member_id'] ? (int) $t['member_id'] : null);
+        }
         $rev = Ledger::reverse($d['id'], $d['reason']);
         audit('reverse', 'transaction', $d['id'], "Reversed {$t['txn_ref']} with {$rev['ref']}: {$d['reason']}");
         return ['message' => "Transaction {$t['txn_ref']} reversed ({$rev['ref']})."];

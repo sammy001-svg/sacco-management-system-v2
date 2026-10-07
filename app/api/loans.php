@@ -334,6 +334,10 @@ return [
             throw new AppError('Repayment not found.', 404);
         }
         loan_scoped((int) $t['account_id']);
+        if (ApprovalService::needed('reversal')) {
+            return ApprovalService::request('reversal', "Reverse repayment {$t['txn_ref']} of " . money($t['amount']) . ": {$d['reason']}",
+                ['transaction_id' => (int) $t['id'], 'reason' => $d['reason']], (float) $t['amount'], (int) $t['branch_id'], (int) $t['member_id']);
+        }
         $rev = LoanService::reverseRepayment((int) $t['id'], $d['reason']);
         audit('reverse', 'loan', $t['account_id'], "Reversed repayment {$t['txn_ref']} (" . money($t['amount']) . "): {$d['reason']}");
         return ['message' => "Repayment {$t['txn_ref']} reversed (" . $rev['ref'] . ")."];
@@ -344,6 +348,13 @@ return [
         Auth::authorize('loans.writeoff');
         $d = Validator::make($_POST, ['loan_id' => 'required|integer', 'reason' => 'required|string|min:3|max:200']);
         $l = loan_scoped($d['loan_id']);
+        if ($l['status'] !== 'active') {
+            throw new AppError('Only active loans can be written off.');
+        }
+        if (ApprovalService::needed('write_off')) {
+            return ApprovalService::request('write_off', "Write off {$l['loan_no']} (balance " . money($l['balance']) . "): {$d['reason']}",
+                ['loan_id' => (int) $l['id'], 'reason' => $d['reason']], (float) $l['balance'], (int) $l['branch_id'], (int) $l['member_id']);
+        }
         LoanService::writeOff((int) $l['id'], $d['reason']);
         audit('write_off', 'loan', $l['id'], "Wrote off {$l['loan_no']} with balance " . money($l['balance']));
         return ['message' => "Loan {$l['loan_no']} written off."];

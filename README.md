@@ -19,6 +19,12 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 | **Accounting** | SACCO chart of accounts, automatic double-entry journal for every transaction, manual and opening-balance journals, account statements, trial balance, income statement, balance sheet, and a reconciliation check against member balances |
 | **Interest & dividends** | Savings interest (product rate, pro-rated) and share dividend runs on average daily or closing balance, with withholding tax, reviewed as drafts and posted to members' savings in resumable batches |
 | **Year-end** | Close a financial year (surplus to retained earnings, period locked) and reopen the latest closed year |
+| **Teller tills** | Open with a float, live expected cash, close with a denomination count; shortages and overages post to Cash Over / Short. Cash transactions are blocked without an open till (configurable) |
+| **Approvals** | Maker-checker for large withdrawals, reversals, loan write-offs and large manual journals. A second user must approve, and the maker stays the poster |
+| **Imports** | Payroll deduction files (savings, shares, loans) and member migration with opening balances: validated row by row, reviewed, then posted in batches |
+| **KYC documents** | Photo, ID front and back, signature, tax PIN and payslip uploads, content-checked and stored privately, with a KYC completeness indicator |
+| **Two-step login** | Authenticator-app codes (TOTP) with single-use recovery codes; administrators can reset a lost phone |
+| **Backups** | Compressed full-database dumps on demand or nightly, with retention, download and restore instructions |
 | **Corrections** | Loan repayments are reversed newest-first: installments reopen exactly and money taken from savings is returned |
 | **Security** | bcrypt passwords, login lockout, CSRF on every write, prepared statements only, branch-scoped data access, role-based permissions, idle session timeout |
 
@@ -86,6 +92,23 @@ Marks overdue installments and charges penalties. Schedule it once a day:
 schtasks /create /sc daily /st 00:05 /tn "SaccoPro daily" /tr "C:\xampp\php\php.exe \"D:\SACCO MANAGEMENT SYSTEM\cron\daily.php\""
 ```
 It can also be run on demand from **Settings → Run daily jobs**.
+
+## Nightly backup
+
+```bash
+30 1 * * *  php /var/www/sacco/cron/backup.php
+```
+```bat
+schtasks /create /sc daily /st 01:30 /tn "SaccoPro backup" /tr "C:\xampp\php\php.exe \"D:\SACCO MANAGEMENT SYSTEM\cron\backup.php\""
+```
+Backups go to `storage/backups` (newest 14 kept by default; see **Settings → Controls**). Copy them off the server regularly.
+Restore with `gunzip < FILE.sql.gz | mysql -u USER -p sacco_pro`.
+
+## Controls (Settings → Controls)
+
+* **Cash needs an open teller till.** This is on by default. Anyone posting cash must open a till first (**Operations → Teller tills**). Mobile, bank and internal postings are not affected.
+* **Approval limits.** Withdrawals and manual journals at or above the limit (default KES 100,000) wait for a second user with the `approvals.decide` permission (managers by default). Reversals and write-offs need approval when their switches are on. Set a limit to 0 to switch that check off.
+* **Migrated balances.** Member opening savings and shares post against *Opening Balance Equity*. Post your opening bank, cash and loan balances as **Opening balance** journals against the same account, so it nets to zero.
 
 ## Built for large SACCOs
 

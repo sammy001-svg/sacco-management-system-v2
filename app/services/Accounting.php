@@ -52,6 +52,7 @@ final class Accounting
             ['3000', 'Member Share Capital', 'equity', 'share_capital', 'All member share accounts (control account)'],
             ['3100', 'Retained Earnings', 'equity', 'retained_earnings', 'Accumulated surpluses after dividends'],
             ['3200', 'Statutory Reserve', 'equity', 'statutory_reserve', 'Appropriations to the statutory reserve'],
+            ['3900', 'Opening Balance Equity', 'equity', 'opening_equity', 'Contra for balances migrated from a previous system; should net to zero once opening journals are posted'],
             ['4000', 'Loan Interest Income', 'income', 'interest_income', null],
             ['4010', 'Loan Penalty Income', 'income', 'penalty_income', null],
             ['4020', 'Loan Processing Fees', 'income', 'processing_fee_income', null],
@@ -76,6 +77,7 @@ final class Accounting
             ['5230', 'Security', 'expense', null, null],
             ['5300', 'Depreciation', 'expense', null, null],
             ['5900', 'General Expenses', 'expense', 'general_expense', 'Fallback for uncategorised expenses'],
+            ['5910', 'Cash Over / Short', 'expense', 'cash_variance', 'Teller till shortages (debit) and overages (credit)'],
         ];
     }
 
@@ -267,10 +269,10 @@ final class Accounting
         $m = fn() => self::methodAccount((string) $t['payment_method']);
 
         switch ($t['type']) {
-            case 'deposit':            $lines = [[$m(), $amount, 0], [$k('member_savings'), 0, $amount]]; break;
+            case 'deposit':            $lines = [[isset($ctx['contra']) ? $k($ctx['contra']) : $m(), $amount, 0], [$k('member_savings'), 0, $amount]]; break;
             case 'withdrawal':         $lines = [[$k('member_savings'), $amount, 0], [$m(), 0, $amount]]; break;
             case 'withdrawal_fee':     $lines = [[$k('member_savings'), $amount, 0], [$k('withdrawal_fee_income'), 0, $amount]]; break;
-            case 'share_purchase':     $lines = [[$m(), $amount, 0], [$k('share_capital'), 0, $amount]]; break;
+            case 'share_purchase':     $lines = [[isset($ctx['contra']) ? $k($ctx['contra']) : $m(), $amount, 0], [$k('share_capital'), 0, $amount]]; break;
             case 'share_transfer_out': $lines = [[$k('share_capital'), $amount, 0], [$k('clearing'), 0, $amount]]; break;
             case 'share_transfer_in':  $lines = [[$k('clearing'), $amount, 0], [$k('share_capital'), 0, $amount]]; break;
             case 'loan_disbursement':  $lines = [[$k('loans_receivable'), $amount, 0], [$m(), 0, $amount]]; break;

@@ -42,6 +42,13 @@ return [
     'distributions.prepare' => ['manager', 'accountant'],
     'distributions.post'   => ['manager'],
 
+    'tills.use'            => ['manager', 'teller', 'loan_officer', 'accountant'],
+    'tills.supervise'      => ['manager'],
+    'approvals.decide'     => ['manager'],
+    'imports.members'      => ['manager'],
+    'imports.checkoff'     => ['manager', 'accountant'],
+    'backups.manage'       => [],
+
     'branches.manage'      => [],
     'users.manage'         => [],
     'settings.manage'      => [],

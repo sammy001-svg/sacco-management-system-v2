@@ -199,10 +199,19 @@ return [
         if (count($lines) < 2) {
             throw new ValidationError(['lines' => 'Add at least two lines.']);
         }
-        $id = DB::transaction(fn() => Accounting::post([
+        $header = [
             'date' => $d['entry_date'], 'source' => $d['source'], 'branch_id' => $d['branch_id'],
             'reference' => $d['reference'], 'narration' => $d['narration'],
-        ], $lines));
+        ];
+        $total = round(array_sum(array_column($lines, 1)), 2);
+        if ($total != round(array_sum(array_column($lines, 2)), 2)) {
+            throw new ValidationError(['lines' => 'Debits and credits must be equal.']);
+        }
+        Accounting::assertOpen($d['entry_date']);
+        if (ApprovalService::needed('journal', $total)) {
+            return ApprovalService::request('journal', "Journal {$d['narration']} (" . money($total) . ')', ['header' => $header, 'lines' => $lines], $total, $d['branch_id']);
+        }
+        $id = DB::transaction(fn() => Accounting::post($header, $lines));
         $no = DB::value('SELECT entry_no FROM journal_entries WHERE id = ?', [$id]);
         audit('journal', 'journal_entry', $id, "Posted manual journal $no: {$d['narration']}");
         return ['message' => "Journal $no posted.", 'id' => $id];

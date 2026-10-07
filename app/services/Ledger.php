@@ -47,11 +47,22 @@ final class Ledger
         return $t['payment_method'] !== 'internal' || $t['type'] === 'loan_repayment';
     }
 
+    /**
+     * When set, postings are recorded as made by this user (used when an
+     * approver releases a request: the maker stays the poster and their till
+     * holds the cash).
+     */
+    public static ?int $actor = null;
+
     /** @return array{id:int, ref:string} */
     public static function post(array $t): array
     {
         $at = $t['at'] ?? now();
         Accounting::assertOpen($at);
+        $by = $t['created_by'] ?? self::$actor ?? Auth::id();
+        if (($t['payment_method'] ?? 'cash') === 'cash' && in_array($t['flow'] ?? 'none', ['in', 'out'], true)) {
+            TillService::assertOpen($by);
+        }
 
         $id = DB::insert('transactions', [
             'branch_id'      => $t['branch_id'] ?? null,
@@ -68,7 +79,7 @@ final class Ledger
             'narration'      => ($t['narration'] ?? '') !== '' ? mb_substr($t['narration'], 0, 255) : null,
             'status'         => 'posted',
             'reversal_of'    => $t['reversal_of'] ?? null,
-            'created_by'     => $t['created_by'] ?? Auth::id(),
+            'created_by'     => $by,
             'created_at'     => $at,
         ]);
         $ref = self::ref($id);

@@ -76,11 +76,17 @@ $roles = Auth::roles();
       { label: 'Branch', render: r => A.esc(r.branch_name || 'All branches') },
       { label: 'Phone', key: 'phone', hideSm: true },
       { label: 'Last login', sort: 'last_login_at', hideSm: true, render: r => r.last_login_at ? A.timeAgo(r.last_login_at) : '<span class="muted">Never</span>' },
+      { label: 'Two-step', hideSm: true, render: r => +r.totp_enabled ? '<span class="badge success">On</span>' : '<span class="badge">Off</span>' },
       { label: 'Status', render: r => r.locked_until && new Date(r.locked_until.replace(' ', 'T')) > new Date() ? A.badge('suspended', 'Locked') : A.badge(r.status) },
-      { label: '', align: 'right', render: r => `<div class="row-actions">${r.locked_until ? `<button class="act" data-action="unlock" title="Unlock"><i class="bi bi-unlock"></i></button>` : ''}<button class="act" data-action="edit" title="Edit"><i class="bi bi-pencil-square"></i></button></div>` },
+      { label: '', align: 'right', render: r => `<div class="row-actions">${r.locked_until ? `<button class="act" data-action="unlock" title="Unlock"><i class="bi bi-unlock"></i></button>` : ''}${+r.totp_enabled && r.id !== me ? '<button class="act" data-action="reset2fa" title="Reset two-step login"><i class="bi bi-shield-x"></i></button>' : ''}<button class="act" data-action="edit" title="Edit"><i class="bi bi-pencil-square"></i></button></div>` },
     ],
     onAction: async (action, r) => {
       if (action === 'edit') return A.openForm('userModal', r);
+      if (action === 'reset2fa') {
+        if (!await A.confirm({ title: `Reset two-step login for ${r.name}?`, message: 'Use this when they lose their phone. They sign in with their password and can set it up again.', confirmText: 'Reset', tone: 'warning', icon: 'shield-x' })) return;
+        try { A.toast((await A.post('security/reset', { user_id: r.id })).message); document.dispatchEvent(new CustomEvent('app:saved', { detail: {} })); } catch (e) { A.toast(e.message, 'error'); }
+        return;
+      }
       try { A.toast((await A.post('users/unlock', { id: r.id })).message); document.dispatchEvent(new CustomEvent('app:saved', { detail: {} })); } catch (e) { A.toast(e.message, 'error'); }
     },
   });

@@ -128,14 +128,14 @@ final class DemoSeeder
         ], [
             'registration_fee' => (float) setting('registration_fee', 1000),
             'payment_method'   => $this->pick(['cash', 'mobile_money']),
-            'at'               => $joinDate . ' 09:' . str_pad((string) mt_rand(0, 59), 2, '0', STR_PAD_LEFT) . ':00',
+            'at'               => min(now(), $joinDate . ' 09:' . str_pad((string) mt_rand(0, 59), 2, '0', STR_PAD_LEFT) . ':00'),
         ]);
         $this->memberIds[] = $memberId;
         $account = SavingsService::defaultAccountId($memberId);
 
         ShareService::purchase($memberId, mt_rand(10, 80), [
             'payment_method' => 'mobile_money', 'payment_ref' => $this->mpesaRef(),
-            'at' => $joinDate . ' 10:15:00',
+            'at' => min(now(), $joinDate . ' 10:15:00'),
         ]);
 
         $saver = mt_rand(2, 25) * 500;     // typical monthly contribution
@@ -148,7 +148,7 @@ final class DemoSeeder
             if ($day > $now) {
                 break;
             }
-            $at = date('Y-m-d', $day) . ' ' . sprintf('%02d:%02d:00', mt_rand(8, 17), mt_rand(0, 59));
+            $at = min(now(), date('Y-m-d', $day) . ' ' . sprintf('%02d:%02d:00', mt_rand(8, 17), mt_rand(0, 59))); // never in the future
 
             if ($this->chance(88)) {
                 SavingsService::deposit($account, $saver + mt_rand(0, 4) * 250, [

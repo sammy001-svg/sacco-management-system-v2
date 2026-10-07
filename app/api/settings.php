@@ -21,6 +21,14 @@ const SETTINGS_SCHEMA = [
         'member_no_prefix'   => 'required|string|max:8',
         'penalty_grace_days' => 'required|integer|min:0|max:90',
     ],
+    'controls' => [
+        'require_till'              => 'bool',
+        'approval_withdrawal_limit' => 'required|numeric|min:0',
+        'approval_journal_limit'    => 'required|numeric|min:0',
+        'approve_reversals'         => 'bool',
+        'approve_write_offs'        => 'bool',
+        'backup_keep'               => 'required|integer|min:1|max:365',
+    ],
 ];
 
 return [

@@ -15,6 +15,14 @@ $groups = [
     'operations' => ['Operations', 'gear-wide-connected', 'Numbering and loan penalty rules.', [
         'member_no_prefix' => ['Member number prefix', 'text', true], 'penalty_grace_days' => ['Penalty grace period (days)', 'number', true],
     ]],
+    'controls' => ['Controls', 'shield-lock', 'Teller tills, second-person approvals and backups.', [
+        'require_till' => ['Cash needs an open teller till', 'bool', false],
+        'approval_withdrawal_limit' => ['Approve withdrawals from (0 = never)', 'number', true],
+        'approval_journal_limit' => ['Approve manual journals from (0 = never)', 'number', true],
+        'approve_reversals' => ['Reversals need approval', 'bool', false],
+        'approve_write_offs' => ['Loan write-offs need approval', 'bool', false],
+        'backup_keep' => ['Backups to keep', 'number', true],
+    ]],
 ];
 ?>
 <div class="page-head">
@@ -31,7 +39,7 @@ $groups = [
       <div class="card-head"><div><h3><span class="h-icon"><i class="bi bi-<?= $icon ?>"></i></span><?= e($title) ?></h3><p><?= e($desc) ?></p></div>
         <button class="btn btn-sm" data-open="settings-<?= $key ?>"><i class="bi bi-pencil"></i><span>Edit</span></button></div>
       <div class="card-body"><div class="kv" style="grid-template-columns:1fr">
-        <?php foreach ($fields as $k => [$label]): ?><div><span><?= e($label) ?></span><strong><?= $v($k) ?></strong></div><?php endforeach; ?>
+        <?php foreach ($fields as $k => [$label, $type]): ?><div><span><?= e($label) ?></span><strong><?= $type === 'bool' ? (($s[$k] ?? '0') === '1' ? 'Yes' : 'No') : $v($k) ?></strong></div><?php endforeach; ?>
       </div></div>
     </section>
 
@@ -41,6 +49,9 @@ $groups = [
         <div class="modal-body">
           <input type="hidden" name="group" value="<?= $key ?>" data-keep>
           <?php foreach ($fields as $k => [$label, $type, $req]): ?>
+            <?php if ($type === 'bool'): ?>
+              <label class="switch"><input type="checkbox" name="<?= $k ?>" value="1" <?= ($s[$k] ?? '0') === '1' ? 'checked' : '' ?>><span class="track"></span><?= e($label) ?></label>
+              <?php continue; endif; ?>
             <div class="field"><label><?= e($label) ?><?= $req ? ' <span class="req">*</span>' : '' ?></label>
               <input class="input" type="<?= $type ?>" name="<?= $k ?>" value="<?= e($s[$k] ?? '') ?>" data-default="<?= e($s[$k] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= $type === 'number' ? 'min="0" step="any"' : '' ?>></div>
           <?php endforeach; ?>

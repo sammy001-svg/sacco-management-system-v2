@@ -17,7 +17,7 @@ return [
             $params[] = $role;
         }
         return paginate(
-            'u.id, u.name, u.email, u.phone, u.role, u.status, u.branch_id, u.last_login_at, u.created_at, u.locked_until, b.name AS branch_name',
+            'u.id, u.name, u.email, u.phone, u.role, u.status, u.branch_id, u.last_login_at, u.created_at, u.locked_until, u.totp_enabled, b.name AS branch_name',
             "FROM users u LEFT JOIN branches b ON b.id = u.branch_id $where",
             $params, sort_clause(['name' => 'u.name', 'role' => 'u.role', 'last_login_at' => 'u.last_login_at'], 'u.id')
         );

@@ -801,6 +801,34 @@ body.modal-open { overflow: hidden; }
 .apply-grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 @media (max-width: 1100px) { .apply-grid { grid-template-columns: minmax(0, 1fr); } }
 
+/* Till indicator in the topbar */
+.till-chip { display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 14px; border-radius: 13px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-weight: 700; font-size: 13px; }
+.till-chip i { font-size: 16px; }
+.till-chip.open { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: var(--success-soft); }
+.till-chip:hover { color: var(--primary); }
+[data-theme="dark"] .till-chip.open { box-shadow: 0 0 14px rgba(0, 255, 163, .25); }
+
+/* Cash count (denominations) */
+.denoms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 12px; }
+.denom { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; }
+.denom span { font-weight: 800; font-size: 13px; text-align: right; color: var(--text-2); }
+
+/* Member documents */
+.doc-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); padding: 20px 22px; }
+.doc-card { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: var(--surface-2); display: flex; flex-direction: column; }
+.doc-thumb { height: 140px; display: grid; place-items: center; background: var(--surface-3); color: var(--muted); font-size: 40px; overflow: hidden; }
+.doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.doc-meta { padding: 10px 12px; font-size: 12.5px; flex: 1; }
+.doc-meta strong { display: block; color: var(--text); font-size: 13px; }
+.doc-actions { display: flex; gap: 4px; padding: 0 8px 8px; justify-content: flex-end; }
+.kyc-list { display: flex; gap: 8px; flex-wrap: wrap; }
+.avatar.photo { background-size: cover; background-position: center; color: transparent; text-shadow: none; }
+.dropzone { border: 2px dashed var(--border-strong); border-radius: 16px; padding: 22px; text-align: center; color: var(--muted); cursor: pointer; transition: all .2s; }
+.dropzone.drag, .dropzone:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.dropzone input { display: none; }
+.recovery-codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 14px; border-radius: 14px; background: var(--surface-3); font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; text-align: center; }
+.qr-box { display: grid; place-items: center; padding: 14px; background: #fff; border-radius: 14px; width: fit-content; margin: 0 auto 14px; }
+
 /* Guarantor rows */
 .g-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto; gap: 0 10px; align-items: end; padding: 12px 12px 0; margin-bottom: 10px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); animation: fade-up .25s var(--ease); }
 .g-row .field { margin-bottom: 12px; }

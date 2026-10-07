@@ -139,6 +139,12 @@ return [
     'alerts' => function () {
         [$ls, $lp] = branch_scope('l.branch_id');
         $items = [];
+        if (Auth::can('approvals.decide') && ($n = ApprovalService::pendingCount())) {
+            $items[] = ['icon' => 'check2-square', 'tone' => 'amber', 'title' => "$n request" . ($n > 1 ? 's' : '') . ' waiting for your approval', 'url' => 'index.php?page=approvals'];
+        }
+        if (Auth::can('tills.use') && !TillService::openFor((int) Auth::id()) && (string) setting('require_till', '1') === '1') {
+            $items[] = ['icon' => 'safe2', 'tone' => 'blue', 'title' => 'Your till is closed — open it before handling cash', 'url' => 'index.php?page=tills'];
+        }
         if (Auth::can('loans.approve')) {
             $n = (int) DB::value("SELECT COUNT(*) FROM loans l WHERE l.status = 'pending' $ls", $lp);
             if ($n) {

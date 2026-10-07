@@ -9,7 +9,7 @@ defined('SACCO') or exit;
  */
 final class Migrator
 {
-    public const VERSION = 2;
+    public const VERSION = APP_DB_VERSION;
 
     public static function run(?callable $log = null): void
     {
@@ -23,6 +23,15 @@ final class Migrator
         self::ensureColumn('loan_repayments', 'status', "ENUM('posted','reversed') NOT NULL DEFAULT 'posted' AFTER payment_ref");
         self::ensureColumn('expenses', 'gl_account_id', 'INT UNSIGNED NULL AFTER category');
         self::ensureIndex('transactions', 'idx_txn_report', '(created_at, status, type, flow, payment_method, branch_id, amount)');
+        self::ensureIndex('transactions', 'idx_txn_user_date', '(created_by, created_at)');
+        self::ensureColumn('users', 'totp_secret', 'VARCHAR(64) NULL AFTER last_login_at');
+        self::ensureColumn('users', 'totp_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER totp_secret');
+        self::ensureColumn('users', 'recovery_codes', 'TEXT NULL AFTER totp_enabled');
+        foreach (['uploads', 'backups'] as $dir) {
+            if (!is_dir(APP_ROOT . "/storage/$dir")) {
+                @mkdir(APP_ROOT . "/storage/$dir", 0775, true);
+            }
+        }
         $log('Schema: columns and indexes up to date.');
 
         Accounting::seedChart();

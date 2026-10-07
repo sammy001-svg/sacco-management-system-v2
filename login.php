@@ -11,6 +11,36 @@ if (Auth::check()) {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     try {
         csrf_verify();
+
+        // Step 2 of two-step login: an authenticator code or a recovery code.
+        if (input('step') === 'code') {
+            $uid = (int) ($_SESSION['2fa_uid'] ?? 0);
+            if (!$uid || time() - (int) ($_SESSION['2fa_at'] ?? 0) > 300) {
+                unset($_SESSION['2fa_uid'], $_SESSION['2fa_at'], $_SESSION['2fa_tries']);
+                throw new AppError('The sign-in took too long. Enter your password again.', 440);
+            }
+            $u = DB::row('SELECT * FROM users WHERE id = ?', [$uid]);
+            $code = (string) input('code', '');
+            $ok = $u && Totp::verify((string) $u['totp_secret'], $code);
+            $usedRecovery = false;
+            if (!$ok && $u && ($left = Totp::useRecoveryCode($u['recovery_codes'], $code)) !== null) {
+                DB::update('users', ['recovery_codes' => $left], 'id = ?', [$uid]);
+                $ok = $usedRecovery = true;
+            }
+            if (!$ok) {
+                $_SESSION['2fa_tries'] = (int) ($_SESSION['2fa_tries'] ?? 0) + 1;
+                if ($_SESSION['2fa_tries'] >= 5) {
+                    unset($_SESSION['2fa_uid'], $_SESSION['2fa_at'], $_SESSION['2fa_tries']);
+                    throw new AppError('Too many wrong codes. Enter your password again.', 440);
+                }
+                throw new ValidationError(['code' => 'That code is not valid.']);
+            }
+            unset($_SESSION['2fa_uid'], $_SESSION['2fa_at'], $_SESSION['2fa_tries']);
+            Auth::login($u);
+            audit('login', 'user', $u['id'], 'Signed in with two-step login' . ($usedRecovery ? ' (recovery code used)' : ''));
+            json_out(['ok' => true, 'redirect' => 'index.php']);
+        }
+
         $email = (string) input('email', '');
         $password = (string) ($_POST['password'] ?? '');
         if ($email === '' || $password === '') {
@@ -20,6 +50,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ]));
         }
         $user = Auth::attempt($email, $password);
+        if ((int) $user['totp_enabled'] === 1 && $user['totp_secret']) {
+            session_regenerate_id(true);
+            $_SESSION['2fa_uid'] = (int) $user['id'];
+            $_SESSION['2fa_at'] = time();
+            $_SESSION['2fa_tries'] = 0;
+            json_out(['ok' => true, 'two_factor' => true]);
+        }
         Auth::login($user);
         audit('login', 'user', $user['id'], 'Signed in');
         json_out(['ok' => true, 'redirect' => 'index.php']);
@@ -75,6 +112,8 @@ $tagline = setting('sacco_tagline', 'Saving together, growing together');
           <p class="muted">Use the credentials issued by your SACCO administrator.</p>
         </div>
         <div class="alert alert-danger" id="loginError" hidden></div>
+        <input type="hidden" name="step" value="password">
+        <div data-step="password">
         <div class="field">
           <label for="email">Email address</label>
           <div class="input-icon"><i class="bi bi-envelope"></i>
@@ -89,6 +128,15 @@ $tagline = setting('sacco_tagline', 'Saving together, growing together');
             <button type="button" class="input-action" data-toggle-password aria-label="Show password"><i class="bi bi-eye"></i></button>
           </div>
           <div class="field-error" data-error-for="password"></div>
+        </div>
+        </div>
+        <div data-step="code" hidden>
+          <div class="info-strip"><i class="bi bi-shield-lock"></i><span>Open your authenticator app and enter the 6-digit code for this account. Lost your phone? Enter one of your recovery codes.</span></div>
+          <div class="field">
+            <label for="code">Verification code</label>
+            <div class="input-icon"><i class="bi bi-key"></i><input class="input input-amount" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" maxlength="11"></div>
+            <div class="field-error" data-error-for="code"></div>
+          </div>
         </div>
         <button class="btn btn-primary btn-lg btn-block" type="submit"><span>Sign in</span><i class="bi bi-arrow-right"></i></button>
         <p class="auth-foot muted"><i class="bi bi-patch-check-fill text-green"></i> Secured with encrypted sessions &amp; CSRF protection</p>
@@ -113,6 +161,13 @@ $tagline = setting('sacco_tagline', 'Saving together, growing together');
       e.currentTarget.innerHTML = input.type === 'password' ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
     });
 
+    const showStep = step => {
+      form.step.value = step;
+      form.querySelectorAll('[data-step]').forEach(el => (el.hidden = el.dataset.step !== step));
+      form.querySelector('button[type=submit] span').textContent = step === 'code' ? 'Verify and sign in' : 'Sign in';
+      if (step === 'code') { form.code.value = ''; setTimeout(() => form.code.focus(), 50); }
+    };
+
     form.addEventListener('submit', async e => {
       e.preventDefault();
       err.hidden = true;
@@ -123,7 +178,9 @@ $tagline = setting('sacco_tagline', 'Saving together, growing together');
       try {
         const res = await fetch('login.php', { method: 'POST', body: new FormData(form), headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' } });
         const data = await res.json();
+        if (data.ok && data.two_factor) { showStep('code'); return; }
         if (data.ok) { window.location.href = data.redirect; return; }
+        if (res.status === 440) showStep('password');
         if (data.errors) Object.entries(data.errors).forEach(([k, v]) => {
           const el = form.querySelector(`[data-error-for="${k}"]`); if (el) el.textContent = v;
           const inp = form.querySelector(`[name="${k}"]`); if (inp) inp.classList.add('is-invalid');

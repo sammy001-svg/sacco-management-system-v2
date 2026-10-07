@@ -323,3 +323,12 @@ $head = fn(string $icon, string $title, string $sub, string $tone = '', ?string 
     <div class="modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary"><span>Save profile</span></button></div>
   </form>
 </div>
+
+<!-- ============ Two-step login ============ -->
+<div class="modal modal-sm" id="securityModal" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-head"><div class="modal-icon"><i class="bi bi-shield-lock"></i></div><div class="modal-title"><h3>Two-step login</h3><p>A code from your phone is needed on top of your password.</p></div><button type="button" class="modal-close" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="modal-body" data-sec-body></div>
+    <div class="modal-foot" data-sec-actions></div>
+  </div>
+</div>

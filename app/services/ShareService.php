@@ -88,6 +88,28 @@ final class ShareService
         });
     }
 
+    /**
+     * Share capital migrated from a previous system. The exact amount is kept
+     * (it need not be a whole number of shares) and posted against Opening
+     * Balance Equity rather than cash.
+     */
+    public static function openingBalance(int $memberId, float $amount, ?string $at = null): array
+    {
+        $amount = round($amount, 2);
+        return DB::transaction(function () use ($memberId, $amount, $at) {
+            $acc = self::lock($memberId);
+            $units = (int) floor($amount / self::price() + 1e-9);
+            DB::query('UPDATE share_accounts SET shares = shares + ?, balance = balance + ? WHERE id = ?', [$units, $amount, $acc['id']]);
+            return Ledger::post([
+                'branch_id' => $acc['branch_id'], 'member_id' => $memberId, 'account_type' => 'shares', 'account_id' => $acc['id'],
+                'type' => 'share_purchase', 'amount' => $amount, 'units' => $units,
+                'balance_after' => DB::value('SELECT balance FROM share_accounts WHERE id = ?', [$acc['id']]),
+                'flow' => 'none', 'payment_method' => 'internal', 'narration' => 'Opening share capital (migrated)', 'at' => $at,
+                'gl' => ['contra' => 'opening_equity'],
+            ]);
+        });
+    }
+
     /** Move shares between members at the seller's book value. */
     public static function transfer(int $fromMemberId, int $toMemberId, int $shares, array $o = []): array
     {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 define('SACCO', true);
 define('APP_PATH', __DIR__);
 define('APP_ROOT', dirname(__DIR__));
+define('APP_DB_VERSION', 3); // bump with every schema change; see database/Migrator.php
 
 $GLOBALS['config'] = require APP_PATH . '/config.php';
 
@@ -24,6 +25,11 @@ require APP_PATH . '/services/SavingsService.php';
 require APP_PATH . '/services/ShareService.php';
 require APP_PATH . '/services/LoanService.php';
 require APP_PATH . '/services/DistributionService.php';
+require APP_PATH . '/services/TillService.php';
+require APP_PATH . '/services/ApprovalService.php';
+require APP_PATH . '/services/ImportService.php';
+require APP_PATH . '/services/BackupService.php';
+require APP_PATH . '/core/Totp.php';
 
 if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
