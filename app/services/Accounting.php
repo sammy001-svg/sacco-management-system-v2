@@ -395,7 +395,7 @@ final class Accounting
         $dr = $cr = 0.0;
         foreach (self::totals(null, $asAt, $branch) as $r) {
             $net = round($r['dr'] - $r['cr'], 2);
-            if ($net == 0.0 && $r['dr'] == 0.0) {
+            if ($net == 0.0) {
                 continue;
             }
             $r['debit'] = $net > 0 ? $net : 0.0;

@@ -49,8 +49,9 @@ final class DemoSeeder
             }
         }
 
-        $this->seedExpenses($members);
         $this->seedPipeline();
+        $this->seedExpenses();
+        $this->seedBankSweeps();
 
         $jobs = LoanService::runDailyJobs();
         cache_flush();
@@ -245,23 +246,31 @@ final class DemoSeeder
         }
     }
 
-    private function seedExpenses(int $members): void
+    /**
+     * Operating costs sized to what the demo SACCO actually earns (about two
+     * thirds of income), so the statements show a believable surplus.
+     */
+    private function seedExpenses(): void
     {
-        // Scale running costs to the size of the SACCO so reports stay realistic.
-        $scale = max(0.04, min(1.0, $members / 1500));
-        $cats = [['Salaries', 180000, 260000], ['Rent', 45000, 90000], ['Utilities', 6000, 18000], ['Stationery', 2000, 9000],
-            ['Transport', 3000, 15000], ['Marketing', 5000, 30000], ['ICT & Software', 8000, 25000], ['Bank Charges', 500, 3500]];
+        $income = (float) DB::value(
+            "SELECT COALESCE(SUM(l.credit - l.debit), 0) FROM journal_lines l JOIN gl_accounts a ON a.id = l.account_id WHERE a.type = 'income'"
+        );
+        $budget = max(20000, $income * 0.65);
+        $weights = ['Salaries' => 45, 'Rent' => 18, 'ICT & Software' => 9, 'Utilities' => 6, 'Marketing' => 6,
+            'Transport' => 5, 'Insurance' => 5, 'Stationery' => 4, 'Bank Charges' => 2];
+        $months = 18;
+        $perSlot = $budget / ($months * count($this->branches) * array_sum($weights));
         foreach ($this->branches as $b) {
-            for ($m = 17; $m >= 0; $m--) {
-                foreach ($cats as [$cat, $min, $max]) {
-                    if ($cat !== 'Salaries' && $cat !== 'Rent' && !$this->chance(70)) {
-                        continue;
-                    }
+            for ($m = $months - 1; $m >= 0; $m--) {
+                foreach ($weights as $cat => $w) {
                     $date = date('Y-m-d', strtotime("-$m months", strtotime(date('Y-m-05'))) + mt_rand(0, 20) * 86400);
                     if ($date > today()) {
                         continue;
                     }
-                    $amount = max(100, round(mt_rand($min, $max) * $scale / 100) * 100);
+                    $amount = round($perSlot * $w * mt_rand(80, 120) / 100 / 10) * 10;
+                    if ($amount < 10) {
+                        continue;
+                    }
                     $glId = Accounting::expenseAccount(null, $cat);
                     $tx = Ledger::post([
                         'branch_id' => $b, 'account_type' => 'expense', 'type' => 'expense', 'amount' => $amount,
@@ -273,6 +282,27 @@ final class DemoSeeder
                         'amount' => $amount, 'description' => "$cat for " . date('F Y', strtotime($date)), 'payment_method' => 'bank',
                         'expense_date' => $date, 'transaction_id' => $tx['id'], 'created_by' => Auth::id(), 'created_at' => "$date 12:00:00",
                     ]);
+                }
+            }
+        }
+    }
+
+    /** Month-end banking: most teller cash and mobile float is swept to the bank. */
+    private function seedBankSweeps(): void
+    {
+        $first = DB::value('SELECT MIN(entry_date) FROM journal_entries');
+        if (!$first) {
+            return;
+        }
+        $bank = Accounting::account('bank');
+        for ($d = date('Y-m-t', strtotime($first)); $d < today(); $d = date('Y-m-t', strtotime("$d +1 day"))) {
+            $t = Accounting::totals(null, $d);
+            foreach (['cash' => 'Teller cash banked', 'mobile_money' => 'Mobile money float swept to bank'] as $key => $text) {
+                $id = Accounting::account($key);
+                $amount = round(($t[$id]['balance'] ?? 0) * 0.85, -2);
+                if ($amount > 0) {
+                    Accounting::post(['date' => $d, 'source' => 'manual', 'reference' => 'SWEEP' . str_replace('-', '', $d), 'narration' => $text],
+                        [[$bank, $amount, 0], [$id, 0, $amount]]);
                 }
             }
         }

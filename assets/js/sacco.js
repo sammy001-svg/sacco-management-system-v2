@@ -276,10 +276,11 @@
         <td class="num">${Number(s.penalty_due) ? money(s.penalty_due, false) : '—'}</td>
         <td class="num strong">${money(s.total_due, false)}</td><td class="num">${money(s.total_paid, false)}</td><td>${badge(s.status)}</td></tr>`).join('')
       : `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="bi bi-calendar2-week"></i></div><h4>No schedule yet</h4><p>The schedule is generated when the loan is disbursed.</p></div></td></tr>`;
-    const repayments = d.repayments.length ? d.repayments.map(r => `<tr><td class="nowrap">${dateTime(r.created_at)}</td><td class="mono">${esc(r.txn_ref || '')}</td>
+    const repayments = d.repayments.length ? d.repayments.map(r => `<tr style="${r.status === 'reversed' ? 'text-decoration:line-through;opacity:.55' : ''}"><td class="nowrap">${dateTime(r.created_at)}</td><td class="mono">${esc(r.txn_ref || '')}</td>
         <td class="num strong">${money(r.amount, false)}</td><td class="num">${money(r.principal_paid, false)}</td><td class="num">${money(r.interest_paid, false)}</td>
-        <td class="num">${money(r.penalty_paid, false)}</td><td>${esc(A.METHODS[r.payment_method] || r.payment_method)}${r.payment_ref ? `<div class="text-xs muted">${esc(r.payment_ref)}</div>` : ''}</td><td>${esc(r.received_by || '—')}</td></tr>`).join('')
-      : `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="bi bi-cash-coin"></i></div><h4>No repayments yet</h4></div></td></tr>`;
+        <td class="num">${money(r.penalty_paid, false)}</td><td>${esc(A.METHODS[r.payment_method] || r.payment_method)}${r.payment_ref ? `<div class="text-xs muted">${esc(r.payment_ref)}</div>` : ''}</td><td>${esc(r.received_by || '—')}</td>
+        <td class="num">${r.status === 'reversed' ? badge('reversed') : d.reversible_repayment && +r.transaction_id === +d.reversible_repayment ? `<button type="button" class="act danger" data-reverse-repayment="${r.transaction_id}" title="Reverse this repayment"><i class="bi bi-arrow-counterclockwise"></i></button>` : ''}</td></tr>`).join('')
+      : `<tr><td colspan="9"><div class="empty"><div class="empty-icon"><i class="bi bi-cash-coin"></i></div><h4>No repayments yet</h4></div></td></tr>`;
     const guarantors = d.guarantors.length ? `<div class="list">${d.guarantors.map(g => `<a class="list-item" href="index.php?page=member&id=${g.member_id}">${avatar(g.first_name + ' ' + g.last_name, 'sm')}<div class="meta"><strong>${esc(g.first_name + ' ' + g.last_name)}</strong><span>${esc(g.member_no)} · ${esc(g.phone)}</span></div><div class="end"><strong>${money(g.amount)}</strong>${badge(g.status)}</div></a>`).join('')}</div>`
       : `<div class="empty"><div class="empty-icon"><i class="bi bi-people"></i></div><h4>No guarantors</h4><p>This loan is secured by the member's own savings.</p></div>`;
     const kv = (k, v) => `<div><span>${esc(k)}</span><strong>${v || '—'}</strong></div>`;
@@ -317,7 +318,7 @@
         ${l.rejection_reason ? kv('Rejection reason', `<span class="text-red">${esc(l.rejection_reason)}</span>`) : ''}
       </div></div>
       <div class="tab-panel ${active === 'lv-schedule' ? 'active' : ''}" id="lv-schedule" data-group="loanview"><div class="table-wrap" style="max-height:360px;overflow-y:auto"><table class="table compact"><thead><tr><th>#</th><th>Due date</th><th class="num">Principal</th><th class="num">Interest</th><th class="num">Penalty</th><th class="num">Total</th><th class="num">Paid</th><th>Status</th></tr></thead><tbody>${schedule}</tbody></table></div></div>
-      <div class="tab-panel ${active === 'lv-repayments' ? 'active' : ''}" id="lv-repayments" data-group="loanview"><div class="table-wrap" style="max-height:360px;overflow-y:auto"><table class="table compact"><thead><tr><th>Date</th><th>Ref</th><th class="num">Amount</th><th class="num">Principal</th><th class="num">Interest</th><th class="num">Penalty</th><th>Method</th><th>Received by</th></tr></thead><tbody>${repayments}</tbody></table></div></div>
+      <div class="tab-panel ${active === 'lv-repayments' ? 'active' : ''}" id="lv-repayments" data-group="loanview"><div class="table-wrap" style="max-height:360px;overflow-y:auto"><table class="table compact"><thead><tr><th>Date</th><th>Ref</th><th class="num">Amount</th><th class="num">Principal</th><th class="num">Interest</th><th class="num">Penalty</th><th>Method</th><th>Received by</th><th></th></tr></thead><tbody>${repayments}</tbody></table></div></div>
       <div class="tab-panel ${active === 'lv-guarantors' ? 'active' : ''}" id="lv-guarantors" data-group="loanview">${guarantors}</div>`;
 
     const c = d.can, btns = [];
@@ -334,10 +335,25 @@
     loanModal.addEventListener('click', e => {
       const b = e.target.closest('[data-loan-act]');
       if (b && loanModal._loan) A.loans[b.dataset.loanAct](loanModal._loan);
+      const rv = e.target.closest('[data-reverse-repayment]');
+      if (rv) reverseRepayment(rv.dataset.reverseRepayment);
     });
     document.addEventListener('app:saved', () => {
       if (loanModal.classList.contains('open') && loanModal.dataset.loanId) viewLoan(loanModal.dataset.loanId);
     });
+  }
+
+  async function reverseRepayment(txnId) {
+    const reason = await A.confirm({
+      title: 'Reverse this repayment?',
+      message: 'The installments it paid are reopened, the loan balance is restored and any money taken from savings is returned.',
+      confirmText: 'Reverse repayment', input: { label: 'Reason', placeholder: 'e.g. Posted to the wrong loan' },
+    });
+    if (!reason) return;
+    try {
+      A.toast((await A.post('loans/reverse_repayment', { transaction_id: txnId, reason })).message);
+      document.dispatchEvent(new CustomEvent('app:saved', { detail: { route: 'loans/reverse_repayment' } }));
+    } catch (e) { A.toast(e.message, 'error'); }
   }
 
   function openLoanForm(modalId, l) {

@@ -16,6 +16,10 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 | **Expenses** | Categorised operating costs posted to the ledger, editable and voidable with automatic reversal |
 | **Reports** | Income statement, cash flow by type, portfolio at risk (PAR) ageing, product performance, top savers, membership; CSV export |
 | **Administration** | Branches, users and roles, settings, full audit trail |
+| **Accounting** | SACCO chart of accounts, automatic double-entry journal for every transaction, manual and opening-balance journals, account statements, trial balance, income statement, balance sheet, and a reconciliation check against member balances |
+| **Interest & dividends** | Savings interest (product rate, pro-rated) and share dividend runs on average daily or closing balance, with withholding tax, reviewed as drafts and posted to members' savings in resumable batches |
+| **Year-end** | Close a financial year (surplus to retained earnings, period locked) and reopen the latest closed year |
+| **Corrections** | Loan repayments are reversed newest-first: installments reopen exactly and money taken from savings is returned |
 | **Security** | bcrypt passwords, login lockout, CSRF on every write, prepared statements only, branch-scoped data access, role-based permissions, idle session timeout |
 
 ## Requirements
@@ -49,6 +53,25 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 
 Demo staff accounts created with demo data (password `Password@123`):
 `manager@sacco.local`, `teller@sacco.local` (branch-restricted), `loans@sacco.local`, `accounts@sacco.local`.
+
+## Upgrading an existing installation
+
+After pulling new code, run the migration once (it is safe to re-run):
+
+```bash
+php database/migrate.php
+```
+
+It adds new tables and columns, seeds the chart of accounts, and posts every historical transaction to the general ledger.
+Administrators see a banner in the app until it has been run.
+
+## Accounting model
+
+* Every money movement posts one balanced journal automatically. The posting rules live in `app/services/Accounting.php`.
+* **Control accounts** (Member Savings, Share Capital, Loans to Members, Internal Transfers Clearing) change only through member transactions, never through manual journals. **Financial statements → Reconciliation** proves they agree with the member records.
+* Loan interest and penalties are recognised when paid (cash basis), so Loans to Members always equals outstanding principal.
+* Expenses post to the expense account chosen on the expense form. Add new expense accounts under **Chart of Accounts**.
+* Closing a year locks every date up to 31 December. Postings into a closed year are refused until it is reopened.
 
 ## Nightly job
 
