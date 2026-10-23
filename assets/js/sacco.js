@@ -659,4 +659,21 @@
       if (p) A.printReceipt(p.dataset.stkPrint);
     });
   }
+  /* ------------------------------------------------------------------
+   | Database upgrade from the browser (hosts without a terminal)
+   * ---------------------------------------------------------------- */
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-run-migrate]');
+    if (!btn) return;
+    const ok = await A.confirm({ title: 'Upgrade the database?', message: 'A backup is saved first, then the new tables and settings are added. It usually takes a few seconds — keep this page open.', confirmText: 'Upgrade now', tone: 'primary', icon: 'database-up' });
+    if (!ok) return;
+    btn.classList.add('loading'); btn.disabled = true;
+    try {
+      A.toast((await A.post('settings/migrate')).message, 'success', 'Upgrade complete');
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      A.toast(err.message, 'error', 'Upgrade failed');
+      btn.classList.remove('loading'); btn.disabled = false;
+    }
+  });
 })();

@@ -10,7 +10,9 @@ $pendingLoans = Auth::can('loans.approve')
     : 0;
 
 $pendingApprovals = Auth::can('approvals.decide') ? ApprovalService::pendingCount() : 0;
-$unpostedMpesa = Auth::can('mpesa.manage') ? (int) DB::value("SELECT COUNT(*) FROM mpesa_requests WHERE status = 'unposted'") : 0;
+$dbOutdated = (int) setting('db_version', 1) < APP_DB_VERSION;
+// Tables from a newer version may not exist until the upgrade has run.
+$unpostedMpesa = !$dbOutdated && Auth::can('mpesa.manage') ? (int) DB::value("SELECT COUNT(*) FROM mpesa_requests WHERE status = 'unposted'") : 0;
 $till = Auth::can('tills.use') ? TillService::openFor((int) $user['id']) : null;
 
 $nav = [
@@ -189,8 +191,9 @@ $asset = fn(string $p) => $p . '?v=' . @filemtime(APP_ROOT . '/' . $p);
     </header>
 
     <main class="content" id="content">
-      <?php if ($user['role'] === 'admin' && (int) setting('db_version', 1) < APP_DB_VERSION): ?>
-        <div class="info-strip warning"><i class="bi bi-database-exclamation"></i><span><strong>Database upgrade required.</strong> Run <code>php database/migrate.php</code> to finish the upgrade.</span></div>
+      <?php if ($user['role'] === 'admin' && $dbOutdated): ?>
+        <div class="info-strip warning"><i class="bi bi-database-exclamation"></i><span><strong>Database upgrade required.</strong> The new version needs database changes (version <?= (int) setting('db_version', 1) ?> → <?= APP_DB_VERSION ?>). A backup is taken first.</span>
+          <button class="btn btn-primary btn-sm" type="button" style="margin-left:auto;flex-shrink:0" data-run-migrate><i class="bi bi-arrow-up-circle"></i><span>Upgrade database now</span></button></div>
       <?php endif; ?>
       <?= $content ?>
     </main>

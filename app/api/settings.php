@@ -96,6 +96,26 @@ return [
         return ['message' => "Demo data loaded: {$members} members with 18 months of savings, shares, loans and expenses ({$r['seconds']}s)."];
     },
 
+    /** Web version of `php database/migrate.php` for hosts without a terminal. */
+    'migrate' => function () {
+        post_only();
+        Auth::authorize('settings.manage');
+        if (Auth::role() !== 'admin') {
+            throw new AppError('Only an administrator can upgrade the database.', 403);
+        }
+        require_once APP_ROOT . '/database/Migrator.php';
+        set_time_limit(0);
+        $from = (int) setting('db_version', 1);
+        // A restorable copy first, in case the host interrupts the upgrade.
+        $backup = BackupService::run("before-v" . APP_DB_VERSION);
+        $log = [];
+        Migrator::run(function ($m) use (&$log) { $log[] = $m; });
+        settings_flush();
+        cache_flush();
+        audit('migrate', 'system', null, "Database upgraded from version $from to " . APP_DB_VERSION . " (backup {$backup['file']})");
+        return ['message' => 'Database upgraded to version ' . APP_DB_VERSION . ". A backup was saved first ({$backup['file']}).", 'log' => $log];
+    },
+
     'run_jobs' => function () {
         post_only();
         Auth::authorize('system.jobs');
