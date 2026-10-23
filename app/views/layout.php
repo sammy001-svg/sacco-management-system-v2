@@ -10,6 +10,7 @@ $pendingLoans = Auth::can('loans.approve')
     : 0;
 
 $pendingApprovals = Auth::can('approvals.decide') ? ApprovalService::pendingCount() : 0;
+$unpostedMpesa = Auth::can('mpesa.manage') ? (int) DB::value("SELECT COUNT(*) FROM mpesa_requests WHERE status = 'unposted'") : 0;
 $till = Auth::can('tills.use') ? TillService::openFor((int) $user['id']) : null;
 
 $nav = [
@@ -26,6 +27,8 @@ $nav = [
     'Operations'     => [
         ['counter', 'Teller Counter', 'person-workspace', 'tills.use'],
         ['tills', 'Tills & Vault', 'safe2', 'tills.use'],
+        ['mpesa', 'M-Pesa Payments', 'phone', 'mpesa.view', $unpostedMpesa],
+        ['sms', 'SMS', 'chat-dots', 'sms.view'],
         ['approvals', 'Approvals', 'check2-square', 'dashboard.view', $pendingApprovals],
         ['imports', 'Imports', 'cloud-upload', 'imports.checkoff'],
     ],
@@ -53,6 +56,7 @@ $quick = array_filter([
     Auth::can('shares.transact')  ? ['sharesModal', 'pie-chart', 'Buy shares'] : null,
     Auth::can('loans.apply')      ? ['loanApplyModal', 'file-earmark-plus', 'New loan application'] : null,
     Auth::can('loans.repay')      ? ['repayModal', 'cash-coin', 'Loan repayment'] : null,
+    Auth::can('mpesa.request')    ? ['stkModal', 'phone-vibrate', 'M-Pesa payment prompt'] : null,
 ]);
 
 $appConfig = [

@@ -5,6 +5,7 @@ $can = [
     'withdraw' => Auth::can('savings.transact'),
     'shares'   => Auth::can('shares.transact'),
     'repay'    => Auth::can('loans.repay'),
+    'mpesa'    => Auth::can('mpesa.request') && MpesaService::configured(),
 ];
 ?>
 <div class="page-head">
@@ -14,7 +15,7 @@ $can = [
     <p>Find the member, check who is at the counter, post the transaction and hand over the receipt.</p>
   </div>
   <div class="page-actions hide-sm">
-    <span class="text-xs muted"><span class="kbd">F2</span> search · <span class="kbd">F3</span> deposit · <span class="kbd">F4</span> withdraw · <span class="kbd">F6</span> shares · <span class="kbd">F7</span> repay · <span class="kbd">F8</span> last receipt</span>
+    <span class="text-xs muted"><span class="kbd">F2</span> search · <span class="kbd">F3</span> deposit · <span class="kbd">F4</span> withdraw · <span class="kbd">F6</span> shares · <span class="kbd">F7</span> repay · <span class="kbd">F9</span> M-Pesa · <span class="kbd">F8</span> last receipt</span>
   </div>
 </div>
 
@@ -140,6 +141,7 @@ $can = [
         ${can.deposit ? qa('deposit', 'arrow-down-left-circle', 'Deposit', 'Cash into savings', 'F3', ok && active.length) : ''}
         ${can.withdraw ? qa('withdraw', 'arrow-up-right-circle', 'Withdraw', 'ID check required', 'F4', ok && active.some(a => +a.allow_withdrawal)) : ''}
         ${can.shares ? qa('shares', 'pie-chart', 'Buy shares', 'Grow share capital', 'F6', ok) : ''}
+        ${can.mpesa ? qa('mpesa', 'phone-vibrate', 'M-Pesa prompt', 'Member pays by phone', 'F9', ok) : ''}
         ${can.repay ? qa('repay', 'cash-coin', 'Repay loan', acc.loans.length ? `${acc.loans.length} active loan(s)` : 'No active loans', 'F7', acc.loans.length > 0) : ''}
       </div>
       <div class="form-section mt-3">Accounts</div>
@@ -161,6 +163,7 @@ $can = [
     if (key === 'withdraw') A.openForm('withdrawModal', { member_id: m, account_id: first(active.filter(a => +a.allow_withdrawal)) });
     if (key === 'shares') A.openForm('sharesModal', { member_id: m });
     if (key === 'repay') A.openForm('repayModal', { member_id: m, loan_id: first(snap.acc.loans) });
+    if (key === 'mpesa') { A.openForm('stkModal', { member_id: m, account_id: first(active) }); return; }
     if (!till && key !== 'repay') A.toast('Your till is not open — cash postings will be refused until it is.', 'warning');
   }
   A.$('#snap').addEventListener('click', e => { const b = e.target.closest('[data-qa]'); if (b) act(b.dataset.qa); });
@@ -212,7 +215,7 @@ $can = [
   /* ---------- Keyboard ---------- */
   document.addEventListener('keydown', e => {
     if (document.querySelector('.modal.open')) return;
-    const map = { F2: () => { search.focus(); search.select(); }, F3: () => act('deposit'), F4: () => act('withdraw'), F6: () => act('shares'), F7: () => act('repay'),
+    const map = { F2: () => { search.focus(); search.select(); }, F3: () => act('deposit'), F4: () => act('withdraw'), F6: () => act('shares'), F7: () => act('repay'), F9: () => act('mpesa'),
       F8: () => (lastRef ? A.printReceipt(lastRef) : A.toast('No receipt yet in this session.', 'info')) };
     if (map[e.key]) { e.preventDefault(); map[e.key](); }
   });

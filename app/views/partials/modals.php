@@ -315,6 +315,45 @@ $head = fn(string $icon, string $title, string $sub, string $tone = '', ?string 
 </div>
 <?php endif; ?>
 
+<?php if (Auth::can('mpesa.request')): ?>
+<!-- ============ M-Pesa payment prompt (STK push) ============ -->
+<div class="modal" id="stkModal" role="dialog" aria-modal="true" aria-hidden="true" data-static>
+  <form class="modal-dialog" data-api="mpesa/stk" data-keep-open novalidate>
+    <?= $head('phone-vibrate', 'M-Pesa payment prompt', 'The member gets a PIN prompt on their phone. The payment posts as soon as they confirm.') ?>
+    <div class="modal-body" data-stk-form>
+      <?php if (!MpesaService::configured()): ?>
+        <div class="alert alert-danger"><i class="bi bi-plug"></i> M-Pesa is not connected yet. An administrator needs to add the Daraja keys to the <code>.env</code> file (Settings → Integrations).</div>
+      <?php elseif (config('mpesa.env') !== 'live'): ?>
+        <div class="alert alert-warning"><i class="bi bi-cone-striped"></i> Sandbox mode — prompts go to Safaricom's test system, no real money moves.</div>
+      <?php endif; ?>
+      <div class="field"><label>Member <span class="req">*</span></label><div class="picker" data-name="member_id" data-required data-active-only></div></div>
+      <div class="field"><label>Payment for</label><?= $methods('purpose', ['deposit' => ['Savings', 'piggy-bank'], 'loan_repayment' => ['Loan', 'cash-coin'], 'share_purchase' => ['Shares', 'pie-chart']], 'deposit') ?></div>
+      <div class="field" data-show-when="purpose:deposit"><label>Savings account <span class="req">*</span></label><select class="select" name="account_id" required data-accounts><option value="">Select a member first</option></select><div class="field-hint" data-account-hint></div></div>
+      <div class="field" data-show-when="purpose:loan_repayment"><label>Loan <span class="req">*</span></label><select class="select" name="loan_id" required data-loans><option value="">Select a member first</option></select><div class="field-hint" data-stk-loan-hint></div></div>
+      <div class="field-hint mb-2" data-show-when="purpose:share_purchase">Shares cost <?= e(money(ShareService::price())) ?> each. Any balance that does not make a whole share goes to the member's savings.</div>
+      <div class="form-grid">
+        <div class="field"><label>Amount <span class="req">*</span></label><div class="input-group"><span class="addon"><?= $cur ?></span><input class="input input-amount" type="number" name="amount" min="1" max="<?= MpesaService::MAX_AMOUNT ?>" step="1" required placeholder="0"></div><div class="field-hint">Whole shillings only.</div></div>
+        <div class="field"><label>M-Pesa phone <span class="req">*</span></label><div class="input-group"><span class="addon"><i class="bi bi-phone"></i></span><input class="input" type="tel" name="phone" required maxlength="20" placeholder="0712 345 678" data-stk-phone></div><div class="field-hint">Defaults to the member's phone.</div></div>
+      </div>
+    </div>
+    <div class="modal-body" data-stk-wait hidden>
+      <div class="stk-wait">
+        <div class="stk-phone"><i class="bi bi-phone-vibrate"></i><span class="stk-pulse"></span></div>
+        <h3 data-stk-title>Waiting for the member…</h3>
+        <p class="muted" data-stk-text></p>
+        <div class="summary-box" data-stk-summary></div>
+        <div class="stk-timer"><div class="bar" data-stk-bar></div></div>
+      </div>
+    </div>
+    <div class="modal-foot" data-stk-foot-form><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" <?= MpesaService::configured() ? '' : 'disabled' ?>><i class="bi bi-send"></i><span>Send prompt</span></button></div>
+    <div class="modal-foot" data-stk-foot-wait hidden>
+      <button type="button" class="btn btn-ghost" data-stk-check><i class="bi bi-arrow-repeat"></i><span>Check now</span></button>
+      <button type="button" class="btn btn-ghost" data-stk-again hidden><i class="bi bi-arrow-counterclockwise"></i><span>Try again</span></button>
+      <button type="button" class="btn btn-primary" data-close><span>Close</span></button>
+    </div>
+  </form>
+</div>
+<?php endif; ?>
 <!-- ============ My profile ============ -->
 <div class="modal modal-sm" id="profileModal" role="dialog" aria-modal="true" aria-hidden="true">
   <form class="modal-dialog" data-api="account/profile" novalidate>

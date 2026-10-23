@@ -35,6 +35,29 @@ return [
         'lockout_minutes'   => (int) Env::get('LOCKOUT_MINUTES', 15),
     ],
 
+    // Safaricom Daraja — Lipa na M-Pesa Online (STK push).
+    'mpesa' => [
+        'env'             => Env::get('MPESA_ENV', 'sandbox') === 'live' ? 'live' : 'sandbox',
+        'base_url'        => rtrim((string) Env::get('MPESA_BASE_URL', ''), '/'),
+        'consumer_key'    => (string) Env::get('MPESA_CONSUMER_KEY', ''),
+        'consumer_secret' => (string) Env::get('MPESA_CONSUMER_SECRET', ''),
+        'type'            => Env::get('MPESA_TYPE', 'paybill') === 'till' ? 'till' : 'paybill',
+        'shortcode'       => (string) Env::get('MPESA_SHORTCODE', ''),
+        'till_number'     => (string) Env::get('MPESA_TILL_NUMBER', ''),
+        'passkey'         => (string) Env::get('MPESA_PASSKEY', ''),
+        'callback_key'    => (string) Env::get('MPESA_CALLBACK_KEY', ''),
+        'callback_url'    => (string) Env::get('MPESA_CALLBACK_URL', ''),
+        'allowed_ips'     => (string) Env::get('MPESA_ALLOWED_IPS', ''),
+    ],
+
+    // Shanfix SMS (https://sms.shanfixtechnology.com → Client → API).
+    'sms' => [
+        'base_url'  => rtrim((string) Env::get('SMS_BASE_URL', 'https://sms.shanfixtechnology.com'), '/'),
+        'client_id' => (string) Env::get('SMS_CLIENT_ID', ''),
+        'api_key'   => (string) Env::get('SMS_API_KEY', ''),
+        'sender_id' => (string) Env::get('SMS_SENDER_ID', ''),
+    ],
+
     'install' => [
         // Set to false after installation to make install.php refuse to run at all.
         'enabled' => Env::bool('INSTALLER_ENABLED', true),

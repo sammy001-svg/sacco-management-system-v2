@@ -42,6 +42,7 @@ final class DemoSeeder
     {
         $previous = system_process();
         system_process(true);
+        SmsService::mute();
         try {
             return $this->seed($members);
         } finally {

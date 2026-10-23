@@ -14,13 +14,17 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $start = microtime(true);
 $r = LoanService::runDailyJobs();
 cache_flush();
-audit('cron', 'system', null, "Daily jobs: {$r['overdue_marked']} overdue, {$r['penalties_applied']} penalties (" . money($r['penalty_total']) . ')');
+$due = SmsService::dueReminders();
+$arrears = SmsService::arrearsAlerts();
+audit('cron', 'system', null, "Daily jobs: {$r['overdue_marked']} overdue, {$r['penalties_applied']} penalties (" . money($r['penalty_total']) . "), SMS: $due due reminders, $arrears arrears alerts");
 
 printf(
-    "[%s] overdue marked: %d · penalties: %d (%s) · %.2fs\n",
+    "[%s] overdue marked: %d · penalties: %d (%s) · SMS reminders: %d due, %d arrears · %.2fs\n",
     date('Y-m-d H:i:s'),
     $r['overdue_marked'],
     $r['penalties_applied'],
     money($r['penalty_total']),
+    $due,
+    $arrears,
     microtime(true) - $start
 );

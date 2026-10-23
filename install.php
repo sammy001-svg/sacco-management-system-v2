@@ -35,6 +35,7 @@ function install_run(array $in, ?callable $log = null): void
     $log ??= fn($m) => null;
     $c = config('db');
     system_process(true); // installing: teller-till and approval controls do not apply
+    SmsService::mute();
 
     // On cPanel the database already exists (created in MySQL® Databases) and the
     // user usually may not create databases, so only try when it is missing.
@@ -198,7 +199,7 @@ if (!$installed && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             $content = env_build($db + [
                 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'FORCE_HTTPS' => str_starts_with($db['APP_URL'], 'https://') && $https ? 'true' : 'false',
-                'INSTALLER_ENABLED' => 'true',
+                'INSTALLER_ENABLED' => 'true', 'MPESA_CALLBACK_KEY' => bin2hex(random_bytes(24)),
             ]);
             if (@file_put_contents(ENV_FILE, $content, LOCK_EX) !== false) {
                 @chmod(ENV_FILE, 0600);

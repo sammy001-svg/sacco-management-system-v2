@@ -756,6 +756,8 @@ body.modal-open { overflow: hidden; }
 .alert { padding: 12px 14px; border-radius: 12px; font-size: 13.5px; margin-bottom: 16px; border: 1px solid transparent; }
 .alert-danger { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
 .alert-success { color: var(--success); background: var(--success-soft); }
+.alert-warning { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 25%, transparent); }
+.alert-info { color: var(--info); background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 22%, transparent); }
 
 /* ---------- Lists ---------- */
 .list { display: flex; flex-direction: column; }
@@ -934,6 +936,37 @@ body.modal-open { overflow: hidden; }
   .auth-hero h1 { margin-top: 32px; }
   .auth-features { display: none; }
 }
+/* ---------- M-Pesa prompt and SMS ---------- */
+.stk-wait { text-align: center; padding: 10px 0 4px; }
+.stk-wait h3 { margin: 16px 0 4px; font-size: 18px; }
+.stk-wait .summary-box { text-align: left; margin-top: 14px; }
+.stk-phone { position: relative; width: 84px; height: 84px; margin: 6px auto 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 34px; color: var(--primary); background: var(--primary-soft); }
+.stk-pulse { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--primary); animation: stk-pulse 1.6s ease-out infinite; }
+.stk-wait.done .stk-pulse, .stk-wait.fail .stk-pulse { display: none; }
+.stk-wait.fail .stk-phone { color: var(--danger); background: var(--danger-soft); }
+@keyframes stk-pulse { from { transform: scale(1); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+[data-theme="dark"] .stk-phone { box-shadow: 0 0 26px -4px rgba(0, 255, 163, .55); }
+.stk-timer { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin-top: 16px; }
+.stk-timer .bar { height: 100%; width: 100%; background: var(--primary); transition: width 1s linear; }
+.stk-wait.done .stk-timer, .stk-wait.fail .stk-timer { display: none; }
+.sms-compose { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.sms-phone { border-radius: 26px; border: 1px solid var(--border); background: var(--surface-2); padding: 18px 14px; min-height: 260px; }
+.sms-phone .bubble { background: var(--surface); border: 1px solid var(--border); border-radius: 16px 16px 16px 4px; padding: 10px 12px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; box-shadow: var(--shadow-sm); }
+.sms-phone .from { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+.sms-meter { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.sms-meter strong { color: var(--text); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-row button { font: 600 11.5px/1 inherit; padding: 6px 9px; border-radius: 99px; border: 1px dashed var(--border-strong); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.chip-row button:hover { border-color: var(--primary); color: var(--primary); }
+.progress { height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; min-width: 90px; }
+.progress span { display: block; height: 100%; background: var(--primary); }
+.int-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.int-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.int-row:last-child { border-bottom: 0; }
+.int-row span { color: var(--muted); }
+.int-row strong { text-align: right; word-break: break-all; }
+@media (max-width: 1000px) { .sms-compose { grid-template-columns: minmax(0, 1fr); } }
+
 /* ---------- Teller counter, vault and ID checks ---------- */
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .select-sm { height: 34px; font-size: 13px; padding-top: 0; padding-bottom: 0; width: auto; }

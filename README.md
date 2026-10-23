@@ -23,6 +23,8 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 | **Tills & branch vault** | Floats and top-ups released from the vault by a supervisor, cash drops, end-of-day surrender with a denomination count, vault ⇄ bank transfers and vault counts. Shortages and overages post to Cash Over / Short; Cash on Hand always equals vaults + open tills |
 | **Counter controls** | ID and signature confirmation on withdrawals, duplicate-posting warning (same amount, same account, within 2 minutes), drawer cash limit |
 | **Receipts & reports** | Printable receipts (80 mm roll or A5) with amount in words and signature lines; later prints are stamped REPRINT. Signed end-of-day teller cash report |
+| **M-Pesa (STK push)** | Staff send a Lipa na M-Pesa PIN prompt to the member's phone for a savings deposit, loan repayment or share purchase. Safaricom's callback posts it with the M-Pesa receipt number; a status check settles prompts whose callback was missed; loan overpayments and share change go to savings; paid-but-unpostable payments are flagged for reposting. Paybill or Till, sandbox or live |
+| **SMS (Shanfix SMS)** | Automatic receipts, disbursement notices, due-date reminders and arrears alerts with editable templates; bulk campaigns to all members, a branch, borrowers, members in arrears, chosen members or pasted numbers, with personalisation, segment counter, SMS balance, progress and delivery reports. Sent from a background queue so no screen waits |
 | **Approvals** | Maker-checker for large withdrawals, reversals, loan write-offs and large manual journals. A second user must approve, and the maker stays the poster |
 | **Imports** | Payroll deduction files (savings, shares, loans) and member migration with opening balances: validated row by row, reviewed, then posted in batches |
 | **KYC documents** | Photo, ID front and back, signature, tax PIN and payslip uploads, content-checked and stored privately, with a KYC completeness indicator |
@@ -108,6 +110,22 @@ schtasks /create /sc daily /st 01:30 /tn "SaccoPro backup" /tr "C:\xampp\php\php
 Backups go to `storage/backups` (newest 14 kept by default; see **Settings → Controls**). Copy them off the server regularly.
 Restore with `gunzip < FILE.sql.gz | mysql -u USER -p sacco_pro`.
 
+## M-Pesa and SMS
+
+Credentials live only in `.env` (never in the database, backups or demo SQL). **Settings → Integrations** shows what is set up and has test buttons.
+
+**M-Pesa (Safaricom Daraja, Lipa na M-Pesa Online):**
+
+1. Create an app at <https://developer.safaricom.co.ke> with *Lipa Na M-Pesa Sandbox* and copy its consumer key and secret.
+2. In `.env`: `MPESA_ENV=sandbox`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE=174379` and the sandbox `MPESA_PASSKEY` from the Daraja simulator page.
+3. `APP_URL` must be the public **https** address: Safaricom calls `APP_URL/mpesa_callback.php?key=MPESA_CALLBACK_KEY`. The key is generated at install; keep it secret.
+4. To go live, apply to Safaricom for Lipa na M-Pesa Online on your Paybill or Till, then set `MPESA_ENV=live`, the live keys, your shortcode and the live passkey. For a Till set `MPESA_TYPE=till`, `MPESA_SHORTCODE` to the store (head office) number and `MPESA_TILL_NUMBER` to the till.
+
+Payments post as *Mobile Money* (GL 1020 Mobile Money Float), so they never touch a teller's drawer.
+
+**SMS (Shanfix SMS):** sign in at <https://sms.shanfixtechnology.com> → *Client → API*, copy the Client ID and API key into `SMS_CLIENT_ID` and `SMS_API_KEY`, and set `SMS_SENDER_ID` to an approved sender ID. Templates and switches are under **Settings → Notifications**.
+
+**Every-minute cron** (`cron/minute.php`) sends the SMS queue, fetches delivery reports and settles M-Pesa prompts whose callback never arrived. The nightly job also queues due-date reminders and arrears alerts.
 ## Controls (Settings → Controls)
 
 * **Cash needs an open teller till.** This is on by default. Anyone posting cash must have an open till. A teller requests a float (**Operations → Tills & Vault**) and a supervisor releases it from the branch vault, which opens the till. Mobile, bank and internal postings are not affected.

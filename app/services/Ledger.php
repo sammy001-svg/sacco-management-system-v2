@@ -95,6 +95,7 @@ final class Ledger
         if ($isCash && !$till) {
             VaultService::direct($row);
         }
+        SmsService::afterTransaction($row);
 
         return ['id' => $id, 'ref' => $ref];
     }

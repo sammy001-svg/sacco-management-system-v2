@@ -554,4 +554,109 @@
       } catch (e) { A.toast(e.message, 'error'); }
     },
   };
+  /* ------------------------------------------------------------------
+   | M-Pesa payment prompt (STK push): send, then wait for the PIN
+   * ---------------------------------------------------------------- */
+  const stkModal = $('#stkModal');
+  if (stkModal) {
+    const form = $('form', stkModal), phone = $('[data-stk-phone]', form);
+    const wait = $('.stk-wait', form);
+    let poll = null, req = null, started = 0;
+    const WAIT_SECONDS = 90;
+
+    const view = waiting => {
+      $('[data-stk-form]', form).hidden = waiting; $('[data-stk-foot-form]', form).hidden = waiting;
+      $('[data-stk-wait]', form).hidden = !waiting; $('[data-stk-foot-wait]', form).hidden = !waiting;
+    };
+    const stop = () => { clearInterval(poll); poll = null; };
+
+    form.addEventListener('picker:change', async e => {
+      if (e.target.dataset.name !== 'member_id') return;
+      if (!e.detail) { if (phone.dataset.auto) { phone.value = ''; } return; }
+      if (phone.value && !phone.dataset.auto) return;
+      try {
+        const d = (await A.get('members/identity', { id: e.detail.id })).data;
+        phone.value = d.phone || ''; phone.dataset.auto = '1';
+      } catch (err) { /* the teller can type it */ }
+    });
+    phone.addEventListener('input', () => delete phone.dataset.auto);
+    form.addEventListener('change', e => {
+      if (e.target.name !== 'loan_id') return;
+      const l = (form._accounts?.loans || []).find(x => String(x.id) === e.target.value);
+      $('[data-stk-loan-hint]', form).innerHTML = l ? `Due now <strong>${money(l.due_now)}</strong> · Balance ${money(l.balance)}` : '';
+      const amt = form.elements.namedItem('amount');
+      if (l && !amt.value && +l.due_now > 0) amt.value = Math.ceil(+l.due_now);
+    });
+    form.addEventListener('form:reset', () => { stop(); view(false); delete phone.dataset.auto; $('[data-stk-loan-hint]', form).innerHTML = ''; });
+    stkModal.addEventListener('modal:closed', stop);
+
+    function render(r, receipt) {
+      req = r;
+      const rows = [['Member', `${esc(r.member_name)} · ${esc(r.member_no)}`], ['For', `${esc(r.purpose_label)} · ${esc(r.target)}`], ['Amount', money(r.amount)], ['Phone', esc(r.phone_masked)]];
+      if (r.mpesa_receipt) rows.push(['M-Pesa receipt', `<span class="mono">${esc(r.mpesa_receipt)}</span>`]);
+      if (r.txn_ref) rows.push(['Posted as', `<span class="mono">${esc(r.txn_ref)}</span>`]);
+      $('[data-stk-summary]', form).innerHTML = rows.map(([k, v]) => `<div class="summary-row"><span>${k}</span><strong>${v}</strong></div>`).join('');
+      const title = $('[data-stk-title]', form), text = $('[data-stk-text]', form);
+      wait.classList.remove('done', 'fail');
+      $('[data-stk-again]', form).hidden = true;
+      $('[data-stk-check]', form).hidden = false;
+      if (r.status === 'pending') {
+        title.textContent = 'Waiting for the member…';
+        text.innerHTML = `Prompt sent to <strong>${esc(r.phone_masked)}</strong>. Ask the member to check their phone and enter their M-Pesa PIN.`;
+        return;
+      }
+      stop();
+      $('[data-stk-check]', form).hidden = true;
+      if (r.status === 'paid') {
+        wait.classList.add('done');
+        $('.stk-phone i', form).className = 'bi bi-check-lg';
+        title.textContent = 'Payment received';
+        text.innerHTML = receipt ? `${money(r.paid_amount || r.amount)} posted. The member gets an SMS confirmation. <button type="button" class="btn btn-ghost btn-xs" data-stk-print="${esc(receipt.ref)}"><i class="bi bi-printer"></i> Print receipt</button>` : 'Posted to the member\'s account.';
+        document.dispatchEvent(new CustomEvent('app:saved', { detail: { route: 'mpesa/paid', res: receipt ? { receipt } : {} } }));
+      } else if (r.status === 'unposted') {
+        wait.classList.add('fail');
+        title.textContent = 'Paid — but not posted';
+        text.innerHTML = `M-Pesa received the money, but it could not be posted: <strong>${esc(r.post_error || '')}</strong>. A manager can repost it from <a href="index.php?page=mpesa">M-Pesa payments</a>.`;
+      } else {
+        wait.classList.add('fail');
+        $('.stk-phone i', form).className = 'bi bi-x-lg';
+        title.textContent = r.status_label;
+        text.textContent = r.result_desc || 'The payment did not go through.';
+        $('[data-stk-again]', form).hidden = false;
+      }
+    }
+
+    async function check(force = false) {
+      if (!req) return;
+      try {
+        const res = force ? await A.post('mpesa/query', { id: req.id }) : await A.get('mpesa/status', { id: req.id });
+        let receipt = res.receipt;
+        if (force && res.data.status === 'paid') receipt = (await A.get('mpesa/status', { id: req.id })).receipt;
+        render(res.data, receipt);
+      } catch (e) { if (force) A.toast(e.message, 'error'); }
+      const left = Math.max(0, WAIT_SECONDS - (Date.now() - started) / 1000);
+      $('[data-stk-bar]', form).style.width = (left / WAIT_SECONDS * 100) + '%';
+      if (left <= 0 && req.status === 'pending') {
+        stop();
+        $('[data-stk-text]', form).innerHTML = 'No answer yet. The member may still complete it — the payment posts automatically when M-Pesa confirms. Use <strong>Check now</strong> or close this window.';
+      }
+    }
+
+    form.addEventListener('form:success', e => {
+      const r = e.detail?.data;
+      if (!r) return;
+      view(true);
+      $('.stk-phone i', form).className = 'bi bi-phone-vibrate';
+      started = Date.now();
+      render(r);
+      stop();
+      poll = setInterval(check, 3000);
+    });
+    form.addEventListener('click', e => {
+      if (e.target.closest('[data-stk-check]')) check(true);
+      if (e.target.closest('[data-stk-again]')) { stop(); view(false); }
+      const p = e.target.closest('[data-stk-print]');
+      if (p) A.printReceipt(p.dataset.stkPrint);
+    });
+  }
 })();

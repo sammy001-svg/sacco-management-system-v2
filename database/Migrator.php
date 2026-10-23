@@ -57,9 +57,31 @@ final class Migrator
             $log('Branch vaults opened with the cash on hand from the ledger.');
         }
 
+        if (self::ensureCallbackKey()) {
+            $log('Generated MPESA_CALLBACK_KEY in .env (protects the M-Pesa callback address).');
+        }
+
         DB::query("INSERT INTO settings (`key`, `value`) VALUES ('db_version', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)", [(string) self::VERSION]);
         settings_flush();
         $log('Database is at version ' . self::VERSION . '.');
+    }
+
+    /** Installations from before v5 have no callback secret; add one to .env. */
+    private static function ensureCallbackKey(): bool
+    {
+        $file = APP_ROOT . '/.env';
+        $current = (string) config('mpesa.callback_key');
+        if ((strlen($current) >= 24 && !str_starts_with($current, 'change-me')) || !is_file($file) || !is_writable($file)) {
+            return false;
+        }
+        $key = bin2hex(random_bytes(24));
+        $env = (string) file_get_contents($file);
+        $env = preg_match('/^MPESA_CALLBACK_KEY=.*$/m', $env)
+            ? preg_replace('/^MPESA_CALLBACK_KEY=.*$/m', 'MPESA_CALLBACK_KEY=' . $key, $env)
+            : rtrim($env) . "\n\n# Protects the M-Pesa callback address (added by the v5 migration).\nMPESA_CALLBACK_KEY=$key\n";
+        file_put_contents($file, $env, LOCK_EX);
+        $GLOBALS['config']['mpesa']['callback_key'] = $key;
+        return true;
     }
 
     public static function runSchema(): void

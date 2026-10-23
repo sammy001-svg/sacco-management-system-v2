@@ -73,8 +73,9 @@ cPanel → **Cron Jobs** → *Add New Cron Job*. Use your real path, which is sh
 |---|---|
 | Once a day, 00:05 | `/usr/local/bin/php /home/USER/sacco.yourdomain.com/cron/daily.php >/dev/null 2>&1` |
 | Once a day, 01:30 | `/usr/local/bin/php /home/USER/sacco.yourdomain.com/cron/backup.php >/dev/null 2>&1` |
+| Every minute (`* * * * *`) | `/usr/local/bin/php /home/USER/sacco.yourdomain.com/cron/minute.php >/dev/null 2>&1` |
 
-`daily.php` marks overdue installments and applies penalties. `backup.php` writes a compressed database copy to `storage/backups`.
+`minute.php` sends queued SMS and settles M-Pesa payments whose callback was missed. `daily.php` marks overdue installments, applies penalties and queues SMS reminders. `backup.php` writes a compressed database copy to `storage/backups`.
 If `/usr/local/bin/php` is a different version, ask your host for the CLI path of PHP 8.1+ (often `/opt/cpanel/ea-php82/root/usr/bin/php`).
 
 Also download copies from **Administration → Backups** regularly, or use cPanel's own backup tool. A backup that only exists on the same server is not enough.
@@ -83,6 +84,7 @@ Also download copies from **Administration → Backups** regularly, or use cPane
 
 1. **Settings:** check the SACCO details, currency and share price. Under **Controls**, set the teller-till rule, the withdrawal ID check, the drawer cash limit and approval limits.
 1. **Vaults:** each branch vault opens with the cash on hand in the ledger. Do a vault count (**Operations → Tills & Vault → Count vault**) before the first teller day so the system matches the strong room.
+1. **M-Pesa and SMS:** fill in the `MPESA_*` and `SMS_*` lines in `.env` (File Manager → edit `.env`; see README → *M-Pesa and SMS*), then use **Settings → Integrations** to test both. M-Pesa needs the site on **https** for Safaricom's callback.
 2. **Branches and Users:** create staff accounts with the right roles and branches.
 3. **Two-step login:** every administrator should switch it on (user menu → Two-step login).
 4. **Migrating from another system:** use **Operations → Imports → Member migration**, then post opening bank, cash and loan balances as *Opening balance* journals.

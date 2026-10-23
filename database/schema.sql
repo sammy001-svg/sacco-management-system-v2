@@ -644,6 +644,91 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   KEY idx_audit_entity (entity, entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------------------
+-- M-Pesa STK push (Lipa na M-Pesa Online) requests and their outcome
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS mpesa_requests (
+  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  member_id            BIGINT UNSIGNED NOT NULL,
+  branch_id            INT UNSIGNED NULL,
+  purpose              ENUM('deposit','loan_repayment','share_purchase') NOT NULL,
+  account_id           BIGINT UNSIGNED NOT NULL COMMENT 'savings account, loan or share account',
+  phone                VARCHAR(15)  NOT NULL,
+  amount               DECIMAL(18,2) NOT NULL,
+  account_ref          VARCHAR(20)  NOT NULL,
+  merchant_request_id  VARCHAR(60)  NULL,
+  checkout_request_id  VARCHAR(60)  NULL,
+  status               ENUM('pending','paid','failed','cancelled','timeout','unposted') NOT NULL DEFAULT 'pending',
+  result_code          VARCHAR(20)  NULL,
+  result_desc          VARCHAR(255) NULL,
+  mpesa_receipt        VARCHAR(20)  NULL,
+  paid_amount          DECIMAL(18,2) NULL,
+  paid_phone           VARCHAR(15)  NULL,
+  paid_at              DATETIME NULL,
+  confirmed_via        ENUM('callback','query') NULL,
+  transaction_id       BIGINT UNSIGNED NULL,
+  post_error           VARCHAR(255) NULL,
+  callback_payload     TEXT NULL,
+  requested_by         INT UNSIGNED NULL,
+  last_query_at        DATETIME NULL,
+  created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at           DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_mpesa_checkout (checkout_request_id),
+  UNIQUE KEY uq_mpesa_receipt (mpesa_receipt),
+  KEY idx_mpesa_status (status, created_at),
+  KEY idx_mpesa_member (member_id, created_at),
+  KEY idx_mpesa_branch (branch_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- SMS outbox (sent through the Shanfix SMS API) and bulk campaigns
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sms_batches (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  title         VARCHAR(120) NOT NULL,
+  message       TEXT NOT NULL,
+  audience      VARCHAR(255) NULL,
+  total         INT UNSIGNED NOT NULL DEFAULT 0,
+  sent          INT UNSIGNED NOT NULL DEFAULT 0,
+  failed        INT UNSIGNED NOT NULL DEFAULT 0,
+  units         DECIMAL(12,2) NOT NULL DEFAULT 0,
+  status        ENUM('queued','sending','done','cancelled') NOT NULL DEFAULT 'queued',
+  created_by    INT UNSIGNED NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at  DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_sms_batches_date (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sms_messages (
+  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  batch_id             BIGINT UNSIGNED NULL,
+  member_id            BIGINT UNSIGNED NULL,
+  phone                VARCHAR(15)  NOT NULL,
+  message              TEXT NOT NULL,
+  category             VARCHAR(30)  NOT NULL DEFAULT 'general',
+  status               ENUM('queued','sending','sent','delivered','failed','cancelled') NOT NULL DEFAULT 'queued',
+  provider_message_id  VARCHAR(40)  NULL,
+  units                DECIMAL(10,2) NULL,
+  attempts             TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  error                VARCHAR(255) NULL,
+  claim_token          VARCHAR(16)  NULL,
+  ref                  VARCHAR(60)  NULL COMMENT 'what triggered it, e.g. a transaction or loan reference',
+  created_by           INT UNSIGNED NULL,
+  created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  next_attempt_at      DATETIME NULL,
+  sent_at              DATETIME NULL,
+  delivered_at         DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_sms_status (status, next_attempt_at, id),
+  KEY idx_sms_batch (batch_id, status),
+  KEY idx_sms_member (member_id, created_at),
+  KEY idx_sms_category (category, ref),
+  KEY idx_sms_provider (provider_message_id),
+  KEY idx_sms_claim (claim_token),
+  KEY idx_sms_date (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -676,7 +761,20 @@ INSERT IGNORE INTO settings (`key`, `value`) VALUES
   ('approve_write_offs', '1'),
   ('backup_keep', '14'),
   ('till_cash_limit', '500000'),
-  ('require_id_check', '1');
+  ('require_id_check', '1'),
+  ('sms_enabled', '1'),
+  ('sms_on_transactions', '1'),
+  ('sms_on_disbursement', '1'),
+  ('sms_due_reminders', '1'),
+  ('sms_due_reminder_days', '3'),
+  ('sms_arrears_alerts', '1'),
+  ('sms_arrears_every_days', '7'),
+  ('sms_tpl_transaction', 'Dear {first_name}, {type} of {amount} on {account} received. Ref {ref}. Balance {balance}. {sacco}'),
+  ('sms_tpl_withdrawal', 'Dear {first_name}, withdrawal of {amount} from {account} processed. Ref {ref}. Balance {balance}. {sacco}'),
+  ('sms_tpl_disbursement', 'Dear {first_name}, your loan {account} of {amount} has been disbursed. Ref {ref}. {sacco}'),
+  ('sms_tpl_due', 'Dear {first_name}, your loan {account} installment of {amount} is due on {due_date}. Pay via M-Pesa or at any branch. {sacco}'),
+  ('sms_tpl_arrears', 'Dear {first_name}, your loan {account} is in arrears of {amount}. Kindly pay today to avoid further penalties. {sacco}'),
+  ('mpesa_enabled', '1');
 
 INSERT IGNORE INTO savings_products (id, code, name, description, interest_rate, min_balance, allow_withdrawal, withdrawal_fee, is_default) VALUES
   (1, 'ORD', 'Ordinary Savings', 'Main member deposits account. Used for loan eligibility.', 4.000, 500.00, 1, 50.00, 1),
