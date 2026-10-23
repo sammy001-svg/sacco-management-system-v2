@@ -26,9 +26,16 @@ final class DemoSeeder
     private int $nid = 21000000;
     private $log;
 
-    public function __construct(?callable $log = null)
+    /** @param bool $staff also create the demo staff logins (shared password Password@123) */
+    public function __construct(?callable $log = null, private bool $staff = true)
     {
         $this->log = $log ?? fn(string $m) => null;
+    }
+
+    /** Demo data may only be added to a system with no member or money history. */
+    public static function canRun(): bool
+    {
+        return !DB::value('SELECT 1 FROM members LIMIT 1') && !DB::value('SELECT 1 FROM transactions LIMIT 1');
     }
 
     public function run(int $members = 200): array
@@ -80,6 +87,10 @@ final class DemoSeeder
         $ids = array_column(DB::all("SELECT id FROM branches WHERE status = 'active' ORDER BY id"), 'id');
         $this->branches = $ids ? array_map('intval', $ids) : [1];
 
+        if (!$this->staff) {
+            ($this->log)('Branches ready (no demo staff logins created).');
+            return;
+        }
         $hash = password_hash('Password@123', PASSWORD_DEFAULT);
         $staff = [
             ['Wanjiku Manager', 'manager@sacco.local', 'manager', null],

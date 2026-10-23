@@ -62,6 +62,26 @@ $groups = [
   <?php endforeach; ?>
 </div>
 
+<?php require_once APP_ROOT . '/database/DemoSeeder.php'; if (DemoSeeder::canRun()): ?>
+<section class="card mb-3">
+  <div class="card-head"><div><h3><span class="h-icon"><i class="bi bi-magic"></i></span>Demo data</h3><p>Fill this empty system with sample members, savings, shares, loans, expenses and accounting history to explore or train staff.</p></div>
+    <button class="btn btn-primary" data-open="demoModal"><i class="bi bi-database-add"></i><span>Load demo data</span></button></div>
+  <div class="card-body"><div class="info-strip warning mb-0"><i class="bi bi-exclamation-triangle"></i><span>Only available while the system has no members or transactions. Demo records are fictional — for a live SACCO, start with an empty system instead.</span></div></div>
+</section>
+<div class="modal" id="demoModal" role="dialog" aria-modal="true" aria-hidden="true" data-static>
+  <form class="modal-dialog" data-api="settings/demo_data" novalidate>
+    <div class="modal-head"><div class="modal-icon"><i class="bi bi-magic"></i></div><div class="modal-title"><h3>Load demo data</h3><p>Takes about 10–60 seconds. Keep this page open.</p></div><button type="button" class="modal-close" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="modal-body">
+      <div class="field"><label>Number of members</label><select class="select" name="members"><option value="50">50 — quick</option><option value="120" selected>120 — recommended</option><option value="300">300 — larger demo (slower)</option></select></div>
+      <p class="text-sm muted mb-2">Adds 3 demo branches and 18 months of history: deposits, withdrawals, shares, loans (some in arrears), expenses, bank banking and the full general ledger. Your login and SACCO settings are kept.</p>
+      <label class="switch"><input type="checkbox" name="staff" value="1"><span class="track"></span>Also create demo staff logins (manager, teller, loans, accounts — password <code>Password@123</code>)</label>
+      <div class="info-strip warning"><i class="bi bi-shield-exclamation"></i><span>If you create the staff logins on a public server, change or deactivate them afterwards in Users &amp; Roles.</span></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary"><i class="bi bi-database-add"></i><span>Load demo data</span></button></div>
+  </form>
+</div>
+<?php endif; ?>
+
 <div class="grid-2">
   <section class="card">
     <div class="card-head"><div><h3><span class="h-icon"><i class="bi bi-clock-history"></i></span>Daily jobs</h3><p>Marks overdue installments and charges late-payment penalties.</p></div></div>
@@ -87,7 +107,7 @@ $groups = [
 <script>
 (function () {
   const A = App;
-  document.addEventListener('app:saved', e => { if ((e.detail.route || '') === 'settings/save') setTimeout(() => location.reload(), 700); });
+  document.addEventListener('app:saved', e => { const r = e.detail.route || ''; if (r === 'settings/save') setTimeout(() => location.reload(), 700); if (r === 'settings/demo_data') setTimeout(() => (location.href = 'index.php'), 1200); });
   A.$('#runJobs').addEventListener('click', async e => {
     const btn = e.currentTarget; btn.classList.add('loading'); btn.disabled = true;
     try { A.toast((await A.post('settings/run_jobs')).message, 'success', 'Daily jobs complete'); }

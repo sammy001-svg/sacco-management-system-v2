@@ -61,6 +61,23 @@ return [
         return ['message' => label($group) . ' settings saved.'];
     },
 
+    /** Fill an empty installation with demo members, loans and books. */
+    'demo_data' => function () {
+        post_only();
+        Auth::authorize('settings.manage');
+        require_once APP_ROOT . '/database/DemoSeeder.php';
+        if (!DemoSeeder::canRun()) {
+            throw new AppError('Demo data can only be added to an empty system. This installation already has members or transactions.');
+        }
+        $members = max(20, min(300, input_int('members', 120)));
+        set_time_limit(600);
+        ignore_user_abort(true);
+        $r = (new DemoSeeder(null, (bool) input('staff')))->run($members);
+        cache_flush();
+        audit('demo_data', 'system', null, "Loaded demo data: {$members} members" . (input('staff') ? ' with demo staff logins' : ''));
+        return ['message' => "Demo data loaded: {$members} members with 18 months of savings, shares, loans and expenses ({$r['seconds']}s)."];
+    },
+
     'run_jobs' => function () {
         post_only();
         Auth::authorize('system.jobs');
