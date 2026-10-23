@@ -24,7 +24,8 @@ $nav = [
         ['expenses', 'Expenses', 'wallet2', 'expenses.view'],
     ],
     'Operations'     => [
-        ['tills', 'Teller Tills', 'safe2', 'tills.use'],
+        ['counter', 'Teller Counter', 'person-workspace', 'tills.use'],
+        ['tills', 'Tills & Vault', 'safe2', 'tills.use'],
         ['approvals', 'Approvals', 'check2-square', 'dashboard.view', $pendingApprovals],
         ['imports', 'Imports', 'cloud-upload', 'imports.checkoff'],
     ],

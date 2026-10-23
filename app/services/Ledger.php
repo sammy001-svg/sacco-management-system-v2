@@ -60,8 +60,12 @@ final class Ledger
         $at = $t['at'] ?? now();
         Accounting::assertOpen($at);
         $by = $t['created_by'] ?? self::$actor ?? Auth::id();
-        if (($t['payment_method'] ?? 'cash') === 'cash' && in_array($t['flow'] ?? 'none', ['in', 'out'], true)) {
-            TillService::assertOpen($by);
+        // Physical cash goes through the poster's till, or straight to the vault
+        // when tills are switched off (Settings → Controls).
+        $isCash = ($t['payment_method'] ?? 'cash') === 'cash' && in_array($t['flow'] ?? 'none', ['in', 'out'], true);
+        $till = $isCash && $by ? TillService::openFor((int) $by) : null;
+        if ($isCash && !$till && TillService::required()) {
+            throw new AppError('Open your till before taking or paying out cash (Operations → Teller tills).', 409);
         }
 
         $id = DB::insert('transactions', [
@@ -88,6 +92,9 @@ final class Ledger
         // Double entry: every ledger row gets its balanced journal immediately.
         $row = DB::row('SELECT * FROM transactions WHERE id = ?', [$id]);
         Accounting::postForTransaction($row, $t['gl'] ?? []);
+        if ($isCash && !$till) {
+            VaultService::direct($row);
+        }
 
         return ['id' => $id, 'ref' => $ref];
     }

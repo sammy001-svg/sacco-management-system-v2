@@ -119,12 +119,13 @@ return [
         Auth::authorize('savings.transact');
         $d = Validator::make($_POST, ['account_id' => 'required|integer', 'amount' => 'required|numeric|min:1'] + payment_rules(), ['account_id' => 'Account']);
         $acc = savings_account_scoped($d['account_id']);
+        guard_duplicate('deposit', 'savings', $d['account_id'], $d['amount']);
         $r = SavingsService::deposit($d['account_id'], $d['amount'], $d);
         audit('deposit', 'savings_account', $d['account_id'], "Deposit {$r['transaction']['ref']} of " . money($d['amount']) . " to {$acc['account_no']}");
         return [
             'message' => 'Deposit of ' . money($d['amount']) . ' received. New balance ' . money($r['balance']) . '.',
             'ref'     => $r['transaction']['ref'],
-            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => "{$acc['first_name']} {$acc['last_name']}", 'account' => $acc['account_no'], 'type' => 'Deposit'],
+            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => "{$acc['first_name']} {$acc['last_name']}", 'account' => $acc['account_no'], 'type' => 'Deposit', 'id' => $r['transaction']['id']],
         ];
     },
 
@@ -133,6 +134,11 @@ return [
         Auth::authorize('savings.transact');
         $d = Validator::make($_POST, ['account_id' => 'required|integer', 'amount' => 'required|numeric|min:1'] + payment_rules(), ['account_id' => 'Account']);
         $acc = savings_account_scoped($d['account_id']);
+        // Counter control: the teller confirms they checked the member's ID and signature.
+        if ((string) setting('require_id_check', '1') === '1' && !input('id_verified')) {
+            throw new ValidationError(['id_verified' => 'Confirm that you have checked the member\'s ID and signature.']);
+        }
+        guard_duplicate('withdrawal', 'savings', $d['account_id'], $d['amount']);
         if (ApprovalService::needed('withdrawal', $d['amount'])) {
             SavingsService::checkWithdrawable($d['account_id'], $d['amount']);
             return ApprovalService::request('withdrawal', 'Withdraw ' . money($d['amount']) . " from {$acc['account_no']} ({$acc['first_name']} {$acc['last_name']})",
@@ -147,7 +153,7 @@ return [
         return [
             'message' => $msg . ' New balance ' . money($r['balance']) . '.',
             'ref'     => $r['transaction']['ref'],
-            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => "{$acc['first_name']} {$acc['last_name']}", 'account' => $acc['account_no'], 'type' => 'Withdrawal'],
+            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => "{$acc['first_name']} {$acc['last_name']}", 'account' => $acc['account_no'], 'type' => 'Withdrawal', 'id' => $r['transaction']['id']],
         ];
     },
 

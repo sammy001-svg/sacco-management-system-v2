@@ -19,7 +19,10 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 | **Accounting** | SACCO chart of accounts, automatic double-entry journal for every transaction, manual and opening-balance journals, account statements, trial balance, income statement, balance sheet, and a reconciliation check against member balances |
 | **Interest & dividends** | Savings interest (product rate, pro-rated) and share dividend runs on average daily or closing balance, with withholding tax, reviewed as drafts and posted to members' savings in resumable batches |
 | **Year-end** | Close a financial year (surplus to retained earnings, period locked) and reopen the latest closed year |
-| **Teller tills** | Open with a float, live expected cash, close with a denomination count; shortages and overages post to Cash Over / Short. Cash transactions are blocked without an open till (configurable) |
+| **Teller counter** | Teller home screen: fast member lookup, photo/signature/ID check, balances, one-key actions (F2–F8), today's postings with receipt reprint |
+| **Tills & branch vault** | Floats and top-ups released from the vault by a supervisor, cash drops, end-of-day surrender with a denomination count, vault ⇄ bank transfers and vault counts. Shortages and overages post to Cash Over / Short; Cash on Hand always equals vaults + open tills |
+| **Counter controls** | ID and signature confirmation on withdrawals, duplicate-posting warning (same amount, same account, within 2 minutes), drawer cash limit |
+| **Receipts & reports** | Printable receipts (80 mm roll or A5) with amount in words and signature lines; later prints are stamped REPRINT. Signed end-of-day teller cash report |
 | **Approvals** | Maker-checker for large withdrawals, reversals, loan write-offs and large manual journals. A second user must approve, and the maker stays the poster |
 | **Imports** | Payroll deduction files (savings, shares, loans) and member migration with opening balances: validated row by row, reviewed, then posted in batches |
 | **KYC documents** | Photo, ID front and back, signature, tax PIN and payslip uploads, content-checked and stored privately, with a KYC completeness indicator |
@@ -107,7 +110,9 @@ Restore with `gunzip < FILE.sql.gz | mysql -u USER -p sacco_pro`.
 
 ## Controls (Settings → Controls)
 
-* **Cash needs an open teller till.** This is on by default. Anyone posting cash must open a till first (**Operations → Teller tills**). Mobile, bank and internal postings are not affected.
+* **Cash needs an open teller till.** This is on by default. Anyone posting cash must have an open till. A teller requests a float (**Operations → Tills & Vault**) and a supervisor releases it from the branch vault, which opens the till. Mobile, bank and internal postings are not affected.
+* **Teller day.** Request float → serve members at the **Teller Counter** → top-up or drop cash as needed → close with a count (the cash goes back to the vault) → print the signed cash report. Supervisors bank excess vault cash, bring cash from the bank and count the vault from the same page.
+* **ID check and cash limit.** *Settings → Controls* turns the withdrawal ID/signature confirmation on or off and sets the drawer cash limit (0 = none) above which the teller is told to drop cash.
 * **Approval limits.** Withdrawals and manual journals at or above the limit (default KES 100,000) wait for a second user with the `approvals.decide` permission (managers by default). Reversals and write-offs need approval when their switches are on. Set a limit to 0 to switch that check off.
 * **Migrated balances.** Member opening savings and shares post against *Opening Balance Equity*. Post your opening bank, cash and loan balances as **Opening balance** journals against the same account, so it nets to zero.
 

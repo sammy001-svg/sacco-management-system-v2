@@ -17,6 +17,8 @@ $groups = [
     ]],
     'controls' => ['Controls', 'shield-lock', 'Teller tills, second-person approvals and backups.', [
         'require_till' => ['Cash needs an open teller till', 'bool', false],
+        'require_id_check' => ['Tellers confirm ID and signature on withdrawals', 'bool', false],
+        'till_cash_limit' => ['Teller drawer cash limit (0 = none)', 'number', true],
         'approval_withdrawal_limit' => ['Approve withdrawals from (0 = never)', 'number', true],
         'approval_journal_limit' => ['Approve manual journals from (0 = never)', 'number', true],
         'approve_reversals' => ['Reversals need approval', 'bool', false],

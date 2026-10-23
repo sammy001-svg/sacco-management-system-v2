@@ -9,7 +9,7 @@ if (PHP_VERSION_ID < 80100) {
 define('SACCO', true);
 define('APP_PATH', __DIR__);
 define('APP_ROOT', dirname(__DIR__));
-define('APP_DB_VERSION', 3); // bump with every schema change; see database/Migrator.php
+define('APP_DB_VERSION', 4); // bump with every schema change; see database/Migrator.php
 
 require APP_PATH . '/core/Env.php';
 Env::load(APP_ROOT . '/.env');
@@ -33,6 +33,7 @@ require APP_PATH . '/services/ShareService.php';
 require APP_PATH . '/services/LoanService.php';
 require APP_PATH . '/services/DistributionService.php';
 require APP_PATH . '/services/TillService.php';
+require APP_PATH . '/services/VaultService.php';
 require APP_PATH . '/services/ApprovalService.php';
 require APP_PATH . '/services/ImportService.php';
 require APP_PATH . '/services/BackupService.php';

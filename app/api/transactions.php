@@ -50,6 +50,10 @@ function txn_filters(): array
             $params[] = $aid;
         }
     }
+    if (input('mine')) {
+        $where .= ' AND t.created_by = ?';
+        $params[] = Auth::id();
+    }
     if ($mid = input_int('member_id')) {
         $where .= ' AND t.member_id = ?';
         $params[] = $mid;
@@ -68,7 +72,8 @@ function txn_filters(): array
 return [
 
     'list' => function () {
-        Auth::authorize(input_int('member_id') ? 'members.view' : 'transactions.view');
+        // A teller's own postings (the counter's "today" list) need only till access.
+        Auth::authorize(input('mine') ? 'tills.use' : (input_int('member_id') ? 'members.view' : 'transactions.view'));
         [$where, $params] = txn_filters();
         // Ordering by (created_at, id) walks the date index, so LIMIT stops early.
         $order = sort_clause(['created_at' => 't.created_at', 'amount' => 't.amount'], 't.created_at DESC, t.id DESC');

@@ -318,14 +318,20 @@ final class DemoSeeder
         }
         $bank = Accounting::account('bank');
         for ($d = date('Y-m-t', strtotime($first)); $d < today(); $d = date('Y-m-t', strtotime("$d +1 day"))) {
-            $t = Accounting::totals(null, $d);
-            foreach (['cash' => 'Teller cash banked', 'mobile_money' => 'Mobile money float swept to bank'] as $key => $text) {
-                $id = Accounting::account($key);
-                $amount = round(($t[$id]['balance'] ?? 0) * 0.85, -2);
+            // Each branch vault banks most of its cash (keeps Cash on Hand = vaults).
+            $cashId = Accounting::account('cash');
+            foreach ($this->branches as $b) {
+                $amount = round((Accounting::totals(null, $d, $b)[$cashId]['balance'] ?? 0) * 0.85, -2);
                 if ($amount > 0) {
-                    Accounting::post(['date' => $d, 'source' => 'manual', 'reference' => 'SWEEP' . str_replace('-', '', $d), 'narration' => $text],
-                        [[$bank, $amount, 0], [$id, 0, $amount]]);
+                    VaultService::bank($b, 'to', $amount, 'SWEEP' . str_replace('-', '', $d), 'Month-end banking', "$d 18:00:00");
                 }
+            }
+            $t = Accounting::totals(null, $d);
+            $mm = Accounting::account('mobile_money');
+            $amount = round(($t[$mm]['balance'] ?? 0) * 0.85, -2);
+            if ($amount > 0) {
+                Accounting::post(['date' => $d, 'source' => 'manual', 'reference' => 'SWEEP' . str_replace('-', '', $d), 'narration' => 'Mobile money float swept to bank'],
+                    [[$bank, $amount, 0], [$mm, 0, $amount]]);
             }
         }
     }

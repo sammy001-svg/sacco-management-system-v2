@@ -77,12 +77,13 @@ return [
             'narration'          => 'nullable|string|max:255',
         ], ['member_id' => 'Member']);
         $m = MemberService::findOrFail($d['member_id']);
+        guard_duplicate('share_purchase', 'shares', ShareService::ensureAccount((int) $m['id']), $d['shares'] * ShareService::price());
         $r = ShareService::purchase((int) $m['id'], $d['shares'], $d + ['payment_method' => $d['payment_method'] ?? 'cash']);
         audit('share_purchase', 'member', $m['id'], "{$d['shares']} shares bought for {$m['member_no']} ({$r['transaction']['ref']})");
         return [
             'message' => "{$d['shares']} shares (" . money($r['amount']) . ") added for {$m['first_name']}. Holding: " . number_format($r['shares']) . ' shares.',
             'ref'     => $r['transaction']['ref'],
-            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $r['amount'], 'balance' => $r['balance'], 'member' => member_name($m), 'account' => 'Share capital', 'type' => 'Share Purchase'],
+            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $r['amount'], 'balance' => $r['balance'], 'member' => member_name($m), 'account' => 'Share capital', 'type' => 'Share Purchase', 'id' => $r['transaction']['id']],
         ];
     },
 

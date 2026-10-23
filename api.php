@@ -33,7 +33,7 @@ try {
 } catch (ValidationError $e) {
     json_out(['ok' => false, 'message' => $e->getMessage(), 'errors' => $e->errors], 422);
 } catch (AppError $e) {
-    json_out(['ok' => false, 'message' => $e->getMessage()], $e->status);
+    json_out(['ok' => false, 'message' => $e->getMessage()] + $e->data, $e->status);
 } catch (PDOException $e) {
     error_log('[api] ' . $e->getMessage());
     if ((int) ($e->errorInfo[1] ?? 0) === 1062) {

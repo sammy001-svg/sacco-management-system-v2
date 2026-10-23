@@ -114,6 +114,7 @@ $head = fn(string $icon, string $title, string $sub, string $tone = '', ?string 
     <?= $head('arrow-up-right-circle', 'Withdraw savings', 'Pay out funds from a withdrawable savings account.', 'warning') ?>
     <div class="modal-body">
       <div class="field"><label>Member <span class="req">*</span></label><div class="picker" data-name="member_id" data-required data-active-only></div></div>
+      <div class="id-check" data-id-check hidden></div>
       <div class="field"><label>Savings account <span class="req">*</span></label><select class="select" name="account_id" required data-accounts="withdrawable"><option value="">Select a member first</option></select><div class="field-hint" data-account-hint></div></div>
       <div class="field"><label>Amount <span class="req">*</span></label><div class="input-group"><span class="addon"><?= $cur ?></span><input class="input input-amount" type="number" name="amount" min="1" step="0.01" required placeholder="0.00"></div></div>
       <div class="field"><label>Pay out via</label><?= $methods() ?></div>
@@ -121,6 +122,11 @@ $head = fn(string $icon, string $title, string $sub, string $tone = '', ?string 
         <div class="field"><label>Reference</label><input class="input" name="payment_ref" maxlength="80"></div>
         <div class="field"><label>Narration</label><input class="input" name="narration" maxlength="255"></div>
       </div>
+      <?php if ((string) setting('require_id_check', '1') === '1'): ?>
+      <label class="check verify-check"><input type="checkbox" name="id_verified" value="1" required>
+        <span>I have checked the member's ID and signature against the records above.</span></label>
+      <div class="field-error" data-error-for="id_verified"></div>
+      <?php endif; ?>
     </div>
     <div class="modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-warning"><i class="bi bi-box-arrow-up-right"></i><span>Process withdrawal</span></button></div>
   </form>

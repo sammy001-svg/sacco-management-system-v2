@@ -516,6 +516,44 @@ CREATE TABLE IF NOT EXISTS till_sessions (
   KEY idx_till_opened (opened_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Branch vault (strong room). Cash on Hand in the ledger = vaults + open tills.
+CREATE TABLE IF NOT EXISTS vaults (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  branch_id   INT UNSIGNED NOT NULL,
+  balance     DECIMAL(18,2) NOT NULL DEFAULT 0,
+  updated_at  DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_vault_branch (branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Every physical cash movement: floats, top-ups, drops, surrenders,
+-- bank transfers, vault counts and counter cash taken without a till.
+CREATE TABLE IF NOT EXISTS cash_movements (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  branch_id        INT UNSIGNED NOT NULL,
+  type             ENUM('float','top_up','drop','surrender','from_bank','to_bank','adjust','direct') NOT NULL,
+  amount           DECIMAL(18,2) NOT NULL,
+  vault_effect     DECIMAL(18,2) NOT NULL COMMENT '+ into the vault, − out of it',
+  vault_after      DECIMAL(18,2) NULL,
+  till_session_id  BIGINT UNSIGNED NULL,
+  user_id          INT UNSIGNED NULL COMMENT 'teller concerned',
+  status           ENUM('pending','completed','rejected','cancelled') NOT NULL DEFAULT 'completed',
+  requested_by     INT UNSIGNED NULL,
+  approved_by      INT UNSIGNED NULL,
+  transaction_id   BIGINT UNSIGNED NULL,
+  journal_id       BIGINT UNSIGNED NULL,
+  reference        VARCHAR(80)  NULL,
+  denominations    TEXT NULL,
+  note             VARCHAR(255) NULL,
+  created_at       DATETIME NOT NULL,
+  completed_at     DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_cash_branch_date (branch_id, created_at),
+  KEY idx_cash_status (status, branch_id),
+  KEY idx_cash_session (till_session_id, type, status),
+  KEY idx_cash_user (user_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Maker-checker: sensitive actions wait here until a second user approves.
 CREATE TABLE IF NOT EXISTS approval_requests (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -636,7 +674,9 @@ INSERT IGNORE INTO settings (`key`, `value`) VALUES
   ('approval_journal_limit', '100000'),
   ('approve_reversals', '1'),
   ('approve_write_offs', '1'),
-  ('backup_keep', '14');
+  ('backup_keep', '14'),
+  ('till_cash_limit', '500000'),
+  ('require_id_check', '1');
 
 INSERT IGNORE INTO savings_products (id, code, name, description, interest_rate, min_balance, allow_withdrawal, withdrawal_fee, is_default) VALUES
   (1, 'ORD', 'Ordinary Savings', 'Main member deposits account. Used for loan eligibility.', 4.000, 500.00, 1, 50.00, 1),

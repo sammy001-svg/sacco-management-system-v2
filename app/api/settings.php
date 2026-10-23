@@ -23,6 +23,8 @@ const SETTINGS_SCHEMA = [
     ],
     'controls' => [
         'require_till'              => 'bool',
+        'require_id_check'          => 'bool',
+        'till_cash_limit'           => 'required|numeric|min:0',
         'approval_withdrawal_limit' => 'required|numeric|min:0',
         'approval_journal_limit'    => 'required|numeric|min:0',
         'approve_reversals'         => 'bool',

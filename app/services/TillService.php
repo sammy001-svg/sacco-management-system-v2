@@ -4,10 +4,12 @@ defined('SACCO') or exit;
 /**
  * Teller cash drawers.
  *
- * Expected cash = opening float + cash received − cash paid out, computed
- * from the ledger rows the teller posted with payment method "cash" while the
- * till was open. On close the teller counts the drawer; any difference is
- * posted to Cash Over / Short so the books match the physical cash.
+ * A till opens with a float issued from the branch vault (VaultService).
+ * Expected cash = float + top-ups − drops + cash received − cash paid out,
+ * where the cash lines are the ledger rows the teller posted with payment
+ * method "cash" while the till was open. On close the teller counts the
+ * drawer, the counted cash is surrendered to the vault and any difference is
+ * posted to Cash Over / Short.
  */
 final class TillService
 {
@@ -23,33 +25,15 @@ final class TillService
         return DB::row("SELECT * FROM till_sessions WHERE user_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1", [$userId]);
     }
 
-    /** Called by the ledger before any cash movement is posted. */
-    public static function assertOpen(?int $userId): void
+    /** Used by VaultService once a float has been released. */
+    public static function openSession(int $userId, int $branchId, float $float): int
     {
-        if (!self::required() || !$userId) {
-            return;
+        if (self::openFor($userId)) {
+            throw new AppError('This teller already has an open till.');
         }
-        if (!self::openFor($userId)) {
-            throw new AppError('Open your till before taking or paying out cash (Operations → Teller tills).', 409);
-        }
-    }
-
-    public static function open(int $userId, float $float): array
-    {
-        return DB::transaction(function () use ($userId, $float) {
-            DB::query('SELECT id FROM users WHERE id = ? FOR UPDATE', [$userId]);
-            if (self::openFor($userId)) {
-                throw new AppError('You already have an open till.');
-            }
-            if ($float < 0) {
-                throw new ValidationError(['opening_float' => 'The float cannot be negative.']);
-            }
-            $branch = DB::value('SELECT branch_id FROM users WHERE id = ?', [$userId]);
-            $id = DB::insert('till_sessions', [
-                'user_id' => $userId, 'branch_id' => $branch, 'opened_at' => now(), 'opening_float' => round($float, 2), 'status' => 'open',
-            ]);
-            return self::summary($id);
-        });
+        return DB::insert('till_sessions', [
+            'user_id' => $userId, 'branch_id' => $branchId, 'opened_at' => now(), 'opening_float' => round($float, 2), 'status' => 'open',
+        ]);
     }
 
     /** Live position of a till session. */
@@ -63,21 +47,29 @@ final class TillService
             "SELECT COALESCE(SUM(CASE WHEN flow = 'in' THEN amount END), 0) AS cash_in,
                     COALESCE(SUM(CASE WHEN flow = 'out' THEN amount END), 0) AS cash_out,
                     SUM(flow = 'in') AS n_in, SUM(flow = 'out') AS n_out
-             FROM transactions WHERE created_by = ? AND payment_method = 'cash' AND created_at >= ? AND created_at <= ?",
+             FROM transactions WHERE created_by = ? AND payment_method = 'cash' AND flow IN ('in','out') AND created_at >= ? AND created_at <= ?",
             [$s['user_id'], $s['opened_at'], $s['closed_at'] ?? now()]
+        );
+        $mv = DB::pairs(
+            "SELECT type, SUM(amount) FROM cash_movements WHERE till_session_id = ? AND status = 'completed' AND type IN ('top_up','drop') GROUP BY type",
+            [$id]
         );
         $s['cash_in'] = (float) $m['cash_in'];
         $s['cash_out'] = (float) $m['cash_out'];
         $s['count_in'] = (int) $m['n_in'];
         $s['count_out'] = (int) $m['n_out'];
-        $s['expected_now'] = round((float) $s['opening_float'] + $s['cash_in'] - $s['cash_out'], 2);
+        $s['top_ups'] = (float) ($mv['top_up'] ?? 0);
+        $s['drops'] = (float) ($mv['drop'] ?? 0);
+        $s['expected_now'] = round((float) $s['opening_float'] + $s['top_ups'] - $s['drops'] + $s['cash_in'] - $s['cash_out'], 2);
+        $s['cash_limit'] = (float) setting('till_cash_limit', 0);
+        $s['over_limit'] = $s['cash_limit'] > 0 && $s['expected_now'] > $s['cash_limit'];
         $s['denominations'] = $s['denominations'] ? json_decode($s['denominations'], true) : null;
         return $s;
     }
 
     /**
      * Close with a physical count. $denoms = [note => quantity]; if empty the
-     * $counted total is used as entered.
+     * $counted total is used as entered. The counted cash goes back to the vault.
      */
     public static function close(int $id, float $counted, array $denoms = [], ?string $notes = null): array
     {
@@ -85,6 +77,9 @@ final class TillService
             $s = DB::row('SELECT * FROM till_sessions WHERE id = ? FOR UPDATE', [$id]);
             if (!$s || $s['status'] !== 'open') {
                 throw new AppError('This till is not open.');
+            }
+            if (DB::value("SELECT 1 FROM cash_movements WHERE till_session_id = ? AND status = 'pending' LIMIT 1", [$id])) {
+                throw new AppError('A top-up for this till is still waiting for approval. Cancel or settle it before closing.');
             }
             $clean = [];
             foreach ($denoms as $note => $qty) {
@@ -99,18 +94,25 @@ final class TillService
             $sum = self::summary($id);
             $expected = $sum['expected_now'];
             $variance = round($counted - $expected, 2);
+            $branch = $s['branch_id'] ? (int) $s['branch_id'] : VaultService::defaultBranch();
 
             $entry = null;
             if ($variance != 0.0) {
                 $cash = Accounting::account('cash');
                 $over = Accounting::account('cash_variance');
                 $entry = Accounting::post([
-                    'date' => today(), 'source' => 'manual', 'branch_id' => $s['branch_id'],
+                    'date' => today(), 'source' => 'manual', 'branch_id' => $branch,
                     'reference' => 'TILL' . $id,
                     'narration' => ($variance < 0 ? 'Till shortage' : 'Till overage') . " — {$sum['user_name']}, session #$id",
                 ], $variance < 0
                     ? [[$over, -$variance, 0], [$cash, 0, -$variance]]
                     : [[$cash, $variance, 0], [$over, 0, $variance]]);
+            }
+            if ($counted > 0) {
+                VaultService::record($branch, 'surrender', $counted, $counted, [
+                    'till_session_id' => $id, 'user_id' => $s['user_id'], 'denominations' => $clean, 'note' => $notes,
+                    'approved_by' => Auth::id(),
+                ]);
             }
             DB::update('till_sessions', [
                 'status' => 'closed', 'closed_at' => now(), 'closed_by' => Auth::id(),

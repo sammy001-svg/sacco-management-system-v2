@@ -111,6 +111,29 @@ return [
         return ['data' => $m];
     },
 
+    /** Photo, signature and ID the teller checks before paying out cash. */
+    'identity' => function () {
+        Auth::authorize('members.view');
+        $m = MemberService::findOrFail(input_int('id'));
+        $docs = [];
+        foreach (DB::all(
+            "SELECT type, MAX(id) AS id FROM member_documents WHERE member_id = ? AND type IN ('photo','signature','id_front','id_back') GROUP BY type",
+            [$m['id']]
+        ) as $d) {
+            $docs[$d['type']] = (int) $d['id'];
+        }
+        return ['data' => [
+            'id'          => (int) $m['id'],
+            'name'        => member_name($m),
+            'member_no'   => $m['member_no'],
+            'national_id' => $m['national_id'],
+            'phone'       => $m['phone'],
+            'status'      => $m['status'],
+            'date_of_birth' => $m['date_of_birth'] ?? null,
+            'docs'        => $docs,
+        ]];
+    },
+
     /** Accounts used by the transaction modals once a member is picked. */
     'accounts' => function () {
         Auth::authorize('members.view');

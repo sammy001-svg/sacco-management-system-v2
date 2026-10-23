@@ -81,7 +81,8 @@ Also download copies from **Administration → Backups** regularly, or use cPane
 
 ## 9. First steps in the app
 
-1. **Settings:** check the SACCO details, currency and share price. Under **Controls**, set the teller-till rule and approval limits.
+1. **Settings:** check the SACCO details, currency and share price. Under **Controls**, set the teller-till rule, the withdrawal ID check, the drawer cash limit and approval limits.
+1. **Vaults:** each branch vault opens with the cash on hand in the ledger. Do a vault count (**Operations → Tills & Vault → Count vault**) before the first teller day so the system matches the strong room.
 2. **Branches and Users:** create staff accounts with the right roles and branches.
 3. **Two-step login:** every administrator should switch it on (user menu → Two-step login).
 4. **Migrating from another system:** use **Operations → Imports → Member migration**, then post opening bank, cash and loan balances as *Opening balance* journals.

@@ -12,14 +12,38 @@ function till_scoped(int $id): array
     return $s;
 }
 
+function clean_denoms(): array
+{
+    $out = [];
+    foreach ((array) ($_POST['denoms'] ?? []) as $note => $qty) {
+        if (in_array((int) $note, TillService::DENOMINATIONS, true) && (int) $qty > 0) {
+            $out[(int) $note] = (int) $qty;
+        }
+    }
+    return $out;
+}
+
 return [
 
+    /** Everything the teller needs about their own drawer. */
     'mine' => function () {
         Auth::authorize('tills.use');
-        $open = TillService::openFor((int) Auth::id());
+        $uid = (int) Auth::id();
+        $open = TillService::openFor($uid);
+        $pending = DB::all("SELECT id, type, amount, created_at, note FROM cash_movements WHERE user_id = ? AND status = 'pending' ORDER BY id", [$uid]);
+        $branch = VaultService::branchOfUser($uid);
+        $today = DB::row(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN flow = 'in' THEN amount END), 0) AS cash_in, COALESCE(SUM(CASE WHEN flow = 'out' THEN amount END), 0) AS cash_out
+             FROM transactions WHERE created_by = ? AND created_at >= ?",
+            [$uid, today() . ' 00:00:00']
+        );
         return ['data' => [
             'session'       => $open ? TillService::summary((int) $open['id']) : null,
+            'pending'       => $pending,
             'required'      => (string) setting('require_till', '1') === '1',
+            'supervisor'    => Auth::can('tills.supervise'),
+            'vault_balance' => VaultService::balance($branch),
+            'today'         => $today,
             'denominations' => TillService::DENOMINATIONS,
         ]];
     },
@@ -70,13 +94,40 @@ return [
         return ['data' => till_scoped(input_int('id'))];
     },
 
-    'open' => function () {
+    'request_float' => function () {
         post_only();
         Auth::authorize('tills.use');
-        $d = Validator::make($_POST, ['opening_float' => 'required|numeric|min:0'], ['opening_float' => 'Opening float']);
-        $s = TillService::open((int) Auth::id(), $d['opening_float']);
-        audit('till_open', 'till', $s['id'], 'Opened till with float ' . money($d['opening_float']));
-        return ['message' => 'Till opened with a float of ' . money($d['opening_float']) . '.', 'data' => $s];
+        $d = Validator::make($_POST, ['amount' => 'required|numeric|min:0', 'note' => 'nullable|string|max:255'], ['amount' => 'Float']);
+        $r = VaultService::requestFloat((int) Auth::id(), $d['amount'], $d['note']);
+        audit('till_float', 'till', $r['session'] ?? null, 'Float of ' . money($d['amount']) . ($r['status'] === 'open' ? ' issued' : ' requested'));
+        return ['message' => $r['status'] === 'open'
+            ? 'Till opened with a float of ' . money($d['amount']) . '.'
+            : 'Float of ' . money($d['amount']) . ' requested. Your till opens as soon as a supervisor releases the cash.'] + $r;
+    },
+
+    'request_topup' => function () {
+        post_only();
+        Auth::authorize('tills.use');
+        $d = Validator::make($_POST, ['amount' => 'required|numeric|min:1', 'note' => 'nullable|string|max:255']);
+        $r = VaultService::requestTopUp((int) Auth::id(), $d['amount'], $d['note']);
+        audit('till_topup', 'till', null, 'Top-up of ' . money($d['amount']) . ' ' . $r['status']);
+        return ['message' => $r['status'] === 'completed' ? 'Top-up of ' . money($d['amount']) . ' added to your till.' : 'Top-up of ' . money($d['amount']) . ' requested from the vault.'] + $r;
+    },
+
+    'drop' => function () {
+        post_only();
+        Auth::authorize('tills.use');
+        $d = Validator::make($_POST, ['amount' => 'required|numeric|min:1', 'note' => 'nullable|string|max:255']);
+        VaultService::drop((int) Auth::id(), $d['amount'], clean_denoms(), $d['note']);
+        audit('till_drop', 'till', null, 'Cash drop of ' . money($d['amount']) . ' to the vault');
+        return ['message' => 'Cash drop of ' . money($d['amount']) . ' recorded. Hand the cash to the vault custodian.'];
+    },
+
+    'cancel_request' => function () {
+        post_only();
+        Auth::authorize('tills.use');
+        VaultService::cancel(input_int('id'));
+        return ['message' => 'Request cancelled.'];
     },
 
     'close' => function () {
@@ -84,16 +135,17 @@ return [
         Auth::authorize('tills.use');
         $s = till_scoped(input_int('id'));
         $d = Validator::make($_POST, ['counted_cash' => 'nullable|numeric|min:0', 'notes' => 'nullable|string|max:255']);
-        $denoms = array_map('intval', (array) ($_POST['denoms'] ?? []));
-        if (!array_filter($denoms) && $d['counted_cash'] === null) {
+        $denoms = clean_denoms();
+        if (!$denoms && $d['counted_cash'] === null) {
             throw new ValidationError(['counted_cash' => 'Count the cash in the drawer.']);
         }
         $r = TillService::close((int) $s['id'], (float) $d['counted_cash'], $denoms, $d['notes']);
         $v = (float) $r['variance'];
         audit('till_close', 'till', $s['id'], "Closed till of {$s['user_name']}: counted " . money($r['counted_cash']) . ', variance ' . money($v));
         return [
-            'message' => 'Till closed. ' . ($v == 0.0 ? 'Cash balanced exactly.' : ($v < 0 ? 'Shortage of ' . money(-$v) : 'Overage of ' . money($v)) . ' posted to Cash Over / Short.'),
+            'message' => 'Till closed and ' . money($r['counted_cash']) . ' surrendered to the vault. ' . ($v == 0.0 ? 'Cash balanced exactly.' : ($v < 0 ? 'Shortage of ' . money(-$v) : 'Overage of ' . money($v)) . ' posted to Cash Over / Short.'),
             'data'    => $r,
+            'report'  => 'index.php?page=till_report&id=' . $s['id'],
         ];
     },
 ];

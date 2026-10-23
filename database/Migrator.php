@@ -53,6 +53,10 @@ final class Migrator
         $j = Accounting::backfill($log);
         $log("General ledger: $j journal entries created.");
 
+        if (VaultService::initialise()) {
+            $log('Branch vaults opened with the cash on hand from the ledger.');
+        }
+
         DB::query("INSERT INTO settings (`key`, `value`) VALUES ('db_version', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)", [(string) self::VERSION]);
         settings_flush();
         $log('Database is at version ' . self::VERSION . '.');

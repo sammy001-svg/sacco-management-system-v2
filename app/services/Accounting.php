@@ -481,6 +481,13 @@ final class Accounting
             $c['ok'] = abs($c['difference']) < 0.01;
         }
         unset($c);
+        if (DB::value("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vaults'")) {
+            $cc = VaultService::cashCheck();
+            $checks[] = ['label' => 'Cash on hand vs vaults + open tills', 'ledger' => $bal('cash'), 'subledger' => $cc['total']];
+            $last = count($checks) - 1;
+            $checks[$last]['difference'] = round($checks[$last]['ledger'] - $checks[$last]['subledger'], 2);
+            $checks[$last]['ok'] = abs($checks[$last]['difference']) < 0.01;
+        }
         $unposted = (int) DB::value(
             "SELECT COUNT(*) FROM transactions t LEFT JOIN journal_entries j ON j.transaction_id = t.id WHERE j.id IS NULL AND t.type <> 'penalty'"
         );

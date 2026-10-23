@@ -317,11 +317,12 @@ return [
             'savings_account_id' => 'nullable|integer',
         ]);
         $l = loan_scoped($d['loan_id']);
+        guard_duplicate('loan_repayment', 'loan', (int) $l['id'], $d['amount']);
         $r = LoanService::repay((int) $l['id'], $d['amount'], $d);
         audit('repay', 'loan', $l['id'], "Repayment {$r['transaction']['ref']} of " . money($d['amount']) . " on {$l['loan_no']}");
         return [
             'message' => 'Repayment of ' . money($d['amount']) . " received on {$l['loan_no']}." . ($r['closed'] ? ' 🎉 The loan is now fully paid.' : ' Balance ' . money($r['balance']) . '.'),
-            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => member_name($l), 'account' => $l['loan_no'], 'type' => 'Loan Repayment'],
+            'receipt' => ['ref' => $r['transaction']['ref'], 'amount' => $d['amount'], 'balance' => $r['balance'], 'member' => member_name($l), 'account' => $l['loan_no'], 'type' => 'Loan Repayment', 'id' => $r['transaction']['id']],
         ];
     },
 

@@ -8,7 +8,8 @@ defined('SACCO') or exit;
 /** A business-rule error whose message is safe to show to the user. */
 class AppError extends RuntimeException
 {
-    public function __construct(string $message, public int $status = 400)
+    /** @param array $data extra fields returned to the browser */
+    public function __construct(string $message, public int $status = 400, public array $data = [])
     {
         parent::__construct($message);
     }
@@ -448,6 +449,59 @@ function branch_filter(string $class = 'select'): string
         $html .= '<option value="' . (int) $b['id'] . '">' . e($b['name']) . '</option>';
     }
     return $html . '</select>';
+}
+
+/**
+ * Guard against the same counter transaction being posted twice (double
+ * click, network retry). The teller can confirm it is genuinely a second one.
+ */
+function guard_duplicate(string $type, string $accountType, int $accountId, float $amount): void
+{
+    if (input('confirm_duplicate') || system_process()) {
+        return;
+    }
+    $dup = DB::row(
+        "SELECT txn_ref, created_at FROM transactions WHERE created_by = ? AND type = ? AND account_type = ? AND account_id = ?
+         AND amount = ? AND status = 'posted' AND created_at >= ? ORDER BY id DESC LIMIT 1",
+        [Auth::id(), $type, $accountType, $accountId, round($amount, 2), date('Y-m-d H:i:s', time() - 120)]
+    );
+    if ($dup) {
+        $ago = max(1, time() - strtotime($dup['created_at']));
+        throw new AppError("An identical transaction ({$dup['txn_ref']}) was posted {$ago} seconds ago.", 409, ['duplicate' => true, 'ref' => $dup['txn_ref']]);
+    }
+}
+
+/** 2,550.50 → "Two thousand five hundred fifty and 50/100" (for receipts and cheques). */
+function amount_in_words(float $n): string
+{
+    $ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+        'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    $tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    $chunk = function (int $x) use ($ones, $tens): string {
+        $w = [];
+        if ($x >= 100) {
+            $w[] = $ones[intdiv($x, 100)] . ' hundred';
+            $x %= 100;
+        }
+        if ($x >= 20) {
+            $w[] = $tens[intdiv($x, 10)] . ($x % 10 ? '-' . $ones[$x % 10] : '');
+        } elseif ($x > 0) {
+            $w[] = $ones[$x];
+        }
+        return implode(' ', $w);
+    };
+    $n = round(abs($n), 2);
+    $whole = (int) floor($n);
+    $cents = (int) round(($n - $whole) * 100);
+    $parts = [];
+    foreach ([1000000000 => 'billion', 1000000 => 'million', 1000 => 'thousand', 1 => ''] as $size => $name) {
+        if ($whole >= $size) {
+            $parts[] = trim($chunk(intdiv($whole, $size)) . ' ' . $name);
+            $whole %= $size;
+        }
+    }
+    $words = $parts ? implode(' ', $parts) : 'zero';
+    return ucfirst($words) . ($cents ? sprintf(' and %02d/100', $cents) : ' only');
 }
 
 function member_name(array $m): string

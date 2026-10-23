@@ -79,7 +79,7 @@
    | API
    * ---------------------------------------------------------------- */
   class ApiError extends Error {
-    constructor(message, status, errors) { super(message); this.status = status; this.errors = errors || null; }
+    constructor(message, status, errors, data) { super(message); this.status = status; this.errors = errors || null; this.data = data || {}; }
   }
 
   function toFormData(obj, fd = new FormData(), prefix = '') {
@@ -113,7 +113,7 @@
       toast('Your session has ended. Redirecting to sign in…', 'warning');
       setTimeout(() => (location.href = 'login.php'), 1400);
     }
-    if (!json.ok) throw new ApiError(json.message || 'Request failed.', res.status, json.errors);
+    if (!json.ok) throw new ApiError(json.message || 'Request failed.', res.status, json.errors, json);
     return json;
   }
   const get = (route, params) => api(route, params, 'GET');
@@ -349,7 +349,17 @@
     try {
       const fd = new FormData(form);
       form.dispatchEvent(new CustomEvent('form:before', { detail: fd }));
-      const res = await post(form.dataset.api, fd);
+      let res;
+      try {
+        res = await post(form.dataset.api, fd);
+      } catch (err) {
+        // Same amount to the same account moments ago: let the teller decide before posting twice.
+        if (!err.data?.duplicate) throw err;
+        const go = await confirmDialog({ title: 'Possible duplicate', message: err.message + ' Post this one as well?', confirmText: 'Post anyway', tone: 'warning', icon: 'files' });
+        if (!go) return;
+        fd.set('confirm_duplicate', '1');
+        res = await post(form.dataset.api, fd);
+      }
       const modal = form.closest('.modal');
       if (modal && !form.hasAttribute('data-keep-open')) Modal.close(modal);
       if (res.receipt) showReceipt(res.receipt, res.message);
@@ -640,13 +650,11 @@
     Modal.open(m);
   }
 
+  /** Opens the official receipt (receipt.php) — prints once, later prints are marked REPRINT. */
   function printReceipt(r) {
-    const w = window.open('', '_blank', 'width=420,height=640');
-    if (!w) return;
-    const rows = [['Reference', r.ref], ['Transaction', r.type], ['Member', r.member], ['Account', r.account], ['Amount', money(r.amount)], ['Balance', money(r.balance)], ['Date', new Date().toLocaleString('en-GB')], ['Served by', CFG.user?.name || '']];
-    w.document.write(`<!doctype html><html><head><title>Receipt ${esc(r.ref)}</title><style>body{font:13px/1.5 system-ui,sans-serif;padding:24px;color:#0b1b3f}h2{margin:0}table{width:100%;border-collapse:collapse;margin:16px 0}td{padding:6px 0;border-bottom:1px dashed #ccd}td:last-child{text-align:right;font-weight:700}.c{text-align:center}.muted{color:#64748f}</style></head>
-      <body><div class="c"><h2>${esc(CFG.sacco || 'SACCO')}</h2><div class="muted">Official transaction receipt</div></div><table>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table><p class="c muted">Thank you for saving with us.</p><script>window.onload=()=>{window.print();}<\/script></body></html>`);
-    w.document.close();
+    const ref = typeof r === 'string' ? r : r.ref;
+    const w = window.open('index.php?page=receipt&ref=' + encodeURIComponent(ref) + '&print=1', '_blank', 'width=560,height=760');
+    if (!w) toast('Allow pop-ups to print receipts.', 'warning');
   }
 
   /* ------------------------------------------------------------------
@@ -838,7 +846,7 @@
   window.App = {
     $, $$, esc, money, num, compact, date, dateTime, timeAgo, today, label, initials, avatar, badge, debounce, txnInfo, METHODS,
     api, get, post, toast, Modal, confirm: confirmDialog, Forms, openForm, Wizard, Picker, DataTable,
-    fillKpis, countUp, sparkline, chart, chartTheme, tooltipStyle, showReceipt, setTheme, cfg: CFG,
+    fillKpis, countUp, sparkline, chart, chartTheme, tooltipStyle, showReceipt, printReceipt, setTheme, cfg: CFG,
     can: p => (CFG.perms || []).includes(p) || CFG.user?.role === 'admin',
   };
 })();

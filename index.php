@@ -28,7 +28,10 @@ $pages = [
     'statements'    => ['Financial Statements', 'accounting.view'],
     'distributions' => ['Interest & Dividends', 'distributions.prepare'],
     'year_end'      => ['Year-End Close', 'accounting.view'],
+    'counter'       => ['Teller Counter', 'tills.use'],
     'tills'         => ['Teller Tills', 'tills.use'],
+    'till_report'   => ['Till Report', 'tills.use', 'tills', false],
+    'receipt'       => ['Receipt', 'tills.use', 'transactions', false],
     'approvals'     => ['Approvals', 'dashboard.view'],
     'imports'       => ['Imports', 'imports.checkoff'],
     'backups'       => ['Backups', 'backups.manage'],
@@ -39,7 +42,8 @@ $pages = [
     'statement'     => ['Member Statement', 'members.view', 'members', false],
 ];
 
-$page = (string) ($_GET['page'] ?? 'dashboard');
+// Tellers land on their counter; everyone else on the dashboard.
+$page = (string) ($_GET['page'] ?? (Auth::role() === 'teller' ? 'counter' : 'dashboard'));
 $status = 200;
 
 if (!isset($pages[$page])) {

@@ -74,8 +74,53 @@
 
   document.addEventListener('picker:change', e => {
     const form = e.target.closest('form');
-    if (form && e.target.dataset.name === 'member_id') loadMemberAccounts(form, e.detail ? e.detail.id : null);
+    if (form && e.target.dataset.name === 'member_id') {
+      loadMemberAccounts(form, e.detail ? e.detail.id : null);
+      const panel = form.querySelector('[data-id-check]');
+      if (panel) renderIdentity(panel, e.detail ? e.detail.id : null);
+    }
   });
+
+  /* ------------------------------------------------------------------
+   | Identity check: photo, signature and ID the teller compares
+   | with the person at the counter before paying out.
+   * ---------------------------------------------------------------- */
+  const docUrl = id => `api.php?r=documents/view&id=${id}`;
+  async function renderIdentity(panel, memberId) {
+    panel.hidden = !memberId;
+    if (!memberId) { panel.innerHTML = ''; return; }
+    panel.innerHTML = '<div class="muted text-sm">Loading identity…</div>';
+    let d;
+    try { d = (await A.get('members/identity', { id: memberId })).data; } catch (e) { panel.innerHTML = `<div class="text-red text-sm">${esc(e.message)}</div>`; return; }
+    const missing = ['photo', 'signature', 'id_front'].filter(k => !d.docs[k]);
+    const names = { photo: 'photo', signature: 'signature', id_front: 'ID copy' };
+    panel.innerHTML = `${d.docs.photo ? `<img class="id-photo" src="${docUrl(d.docs.photo)}" alt="Member photo">` : '<div class="id-photo"><i class="bi bi-person"></i></div>'}
+      <div><div class="id-facts"><span>Name</span><strong>${esc(d.name)}</strong><span>Member no.</span><strong class="mono">${esc(d.member_no)}</strong>
+        <span>National ID</span><strong class="mono">${esc(d.national_id)}</strong><span>Phone</span><strong>${esc(d.phone || '—')}</strong></div>
+        ${d.docs.signature ? `<img class="id-sign" src="${docUrl(d.docs.signature)}" alt="Specimen signature">` : ''}
+        ${d.docs.id_front ? `<div class="mt-1"><a class="text-xs fw-bold" href="${docUrl(d.docs.id_front)}" target="_blank"><i class="bi bi-person-vcard"></i> View ID copy</a></div>` : ''}
+        ${missing.length ? `<div class="id-missing mt-1"><i class="bi bi-exclamation-triangle"></i>&nbsp;No ${missing.map(k => names[k]).join(', ')} on file — verify the original ID carefully.</div>` : ''}
+      </div>`;
+  }
+  A.renderIdentity = renderIdentity;
+  document.addEventListener('form:reset', e => { const p = e.target.querySelector?.('[data-id-check]'); if (p) renderIdentity(p, null); }, true);
+
+  /* ------------------------------------------------------------------
+   | Teller cash forms: denomination counts fill the amount, and the
+   | float request shows what the vault can release.
+   * ---------------------------------------------------------------- */
+  document.addEventListener('input', e => {
+    if (!e.target.dataset || e.target.dataset.denom === undefined) return;
+    const form = e.target.closest('form'), target = form && form.querySelector('[data-denom-total]');
+    if (!target) return;
+    const total = $$('[data-denom]', form).reduce((s, i) => s + Number(i.dataset.denom) * (Number(i.value) || 0), 0);
+    target.value = total ? total.toFixed(2) : '';
+  });
+  document.addEventListener('form:open', async e => {
+    if (e.target.id !== 'floatModal') return;
+    const hint = e.target.querySelector('[data-vault-hint]');
+    try { hint.innerHTML = `The vault holds <strong>${money((await A.get('tills/mine')).data.vault_balance)}</strong> now.`; } catch (err) { hint.textContent = ''; }
+  }, true);
 
   document.addEventListener('change', e => {
     const s = e.target;
