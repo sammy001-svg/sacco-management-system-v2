@@ -18,7 +18,7 @@ final class ApprovalService
 
     public static function needed(string $type, float $amount = 0): bool
     {
-        if (PHP_SAPI === 'cli') {
+        if (system_process()) {
             return false;
         }
         switch ($type) {

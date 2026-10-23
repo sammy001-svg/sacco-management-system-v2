@@ -15,7 +15,7 @@ final class TillService
 
     public static function required(): bool
     {
-        return PHP_SAPI !== 'cli' && (string) setting('require_till', '1') === '1';
+        return !system_process() && (string) setting('require_till', '1') === '1';
     }
 
     public static function openFor(int $userId): ?array

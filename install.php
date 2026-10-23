@@ -34,6 +34,7 @@ function install_run(array $in, ?callable $log = null): void
 {
     $log ??= fn($m) => null;
     $c = config('db');
+    system_process(true); // installing: teller-till and approval controls do not apply
 
     // On cPanel the database already exists (created in MySQL® Databases) and the
     // user usually may not create databases, so only try when it is missing.
@@ -68,6 +69,36 @@ function install_run(array $in, ?callable $log = null): void
     if (($n = (int) ($in['demo'] ?? 0)) > 0) {
         settings_flush();
         (new DemoSeeder($log))->run($n);
+    }
+}
+
+/**
+ * Undo a failed installation so it can simply be run again: drops only the
+ * SaccoPro tables (names read from schema.sql), never anything else in the database.
+ */
+function install_rollback(): void
+{
+    try {
+        preg_match_all('/CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?/i', (string) file_get_contents(__DIR__ . '/database/schema.sql'), $m);
+        $pdo = DB::pdo();
+        $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+        foreach ($m[1] as $table) {
+            $pdo->exec("DROP TABLE IF EXISTS `$table`");
+        }
+        $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+    } catch (Throwable $e) {
+        error_log('[install] rollback failed: ' . $e->getMessage());
+    }
+}
+
+/** Install, or roll everything back and rethrow so the installer can be re-run. */
+function install_safely(array $in, ?callable $log = null): void
+{
+    try {
+        install_run($in, $log);
+    } catch (Throwable $e) {
+        install_rollback();
+        throw $e;
     }
 }
 
@@ -131,7 +162,7 @@ if (PHP_SAPI === 'cli') {
         fwrite(STDERR, implode("\n", $errors) . "\n");
         exit(1);
     }
-    install_run($in, fn($m) => print($m . PHP_EOL));
+    install_safely($in, fn($m) => print($m . PHP_EOL));
     exit("Installation complete.\n");
 }
 
@@ -184,7 +215,7 @@ if (!$installed && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (!$errors) {
                 set_time_limit(0);
                 $in['demo'] = !empty($_POST['demo']) ? 120 : 0;
-                install_run($in);
+                install_safely($in);
                 $installed = true;
                 $step = 'done';
                 $justInstalled = true;
@@ -267,7 +298,7 @@ $steps = ['database' => 'Database', 'admin' => 'Administrator', 'done' => 'Finis
         <form class="auth-card" method="post" novalidate>
           <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="step" value="admin">
           <div class="auth-card-head"><span class="eyebrow">Step 2 of 2 · connected to <?= e(config('db.name')) ?></span><h2>Create the administrator</h2></div>
-          <?php if ($fatal): ?><div class="alert alert-danger"><strong>Installation failed:</strong> <?= e($fatal) ?></div><?php endif; ?>
+          <?php if ($fatal): ?><div class="alert alert-danger"><strong>Installation failed:</strong> <?= e($fatal) ?><br><small>Nothing was kept — fix the problem and press Install again.</small></div><?php endif; ?>
           <div class="field"><label>SACCO name</label><input class="input" name="sacco" value="<?= e($in['sacco']) ?>" required></div>
           <div class="field"><label>Your full name</label><input class="input <?= isset($errors['name']) ? 'is-invalid' : '' ?>" name="name" value="<?= e($in['name']) ?>" required><div class="field-error"><?= e($errors['name'] ?? '') ?></div></div>
           <div class="field"><label>Email</label><input class="input <?= isset($errors['email']) ? 'is-invalid' : '' ?>" type="email" name="email" value="<?= e($in['email']) ?>" required><div class="field-error"><?= e($errors['email'] ?? '') ?></div></div>

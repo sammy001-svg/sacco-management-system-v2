@@ -39,6 +39,20 @@ function config(string $key, mixed $default = null): mixed
     return $value;
 }
 
+/**
+ * True while the system itself is doing work (installer, demo seeding,
+ * migrations, cron/CLI). Operator controls such as teller tills and
+ * maker-checker approvals apply to people, not to these processes.
+ */
+function system_process(?bool $on = null): bool
+{
+    static $flag = false;
+    if ($on !== null) {
+        $flag = $on;
+    }
+    return $flag || PHP_SAPI === 'cli';
+}
+
 function is_installed(): bool
 {
     try {

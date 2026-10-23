@@ -33,6 +33,17 @@ final class DemoSeeder
 
     public function run(int $members = 200): array
     {
+        $previous = system_process();
+        system_process(true);
+        try {
+            return $this->seed($members);
+        } finally {
+            system_process($previous);
+        }
+    }
+
+    private function seed(int $members): array
+    {
         mt_srand(20261005);
         $admin = (int) DB::value("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1");
         Auth::actAs($admin ?: null);
