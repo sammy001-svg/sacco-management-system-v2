@@ -36,8 +36,9 @@ Green & navy design, dark mode with neon-glow cards, and every form opens as a p
 
 ## Installation
 
-1. **Database connection.** Edit `app/config.php` (defaults: `127.0.0.1`, user `root`, no password, database `sacco_pro`), or set the
-   environment variables `SACCO_DB_HOST`, `SACCO_DB_NAME`, `SACCO_DB_USER` and `SACCO_DB_PASS`.
+1. **Configuration.** Copy `.env.example` to `.env` and set the database connection (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`).
+   The web installer can also write `.env` for you. Real server environment variables override the file.
+   **Hosting on cPanel?** Follow [DEPLOY-CPANEL.md](DEPLOY-CPANEL.md).
 2. **Serve the folder.** Pick one:
    * **XAMPP:** copy this folder to `C:\xampp\htdocs\sacco` and open `http://localhost/sacco/`, or
    * **Apache alias** (keeps the code here): add to `C:\xampp\apache\conf\extra\httpd-xampp.conf`
@@ -158,7 +159,7 @@ index.php            page router (index.php?page=…)
 api.php              JSON API router (api.php?r=module/action)
 login.php · logout.php · install.php
 app/
-  config.php         settings and DB credentials
+  config.php         reads settings from .env (see .env.example)
   permissions.php    role → permission map
   core/              DB, Auth, Validator, helpers
   services/          Ledger, MemberService, SavingsService, ShareService, LoanService
@@ -174,7 +175,8 @@ storage/             logs and cache (must be writable)
 
 ## Production checklist
 
-* Set `SACCO_DEBUG=0` (or `'debug' => false` in `app/config.php`) so errors are logged, not displayed.
+* Set `APP_DEBUG=false` in `.env` so errors are logged to `storage/logs`, not displayed.
+* Set `INSTALLER_ENABLED=false` once installed.
 * Use a dedicated MySQL user with a strong password; never use `root`.
 * Serve over HTTPS. Session cookies switch to `Secure` automatically.
 * Make sure `app/`, `database/`, `cron/` and `storage/` are not web-accessible. `.htaccess` files are included for Apache; on Nginx, deny them in the server block.

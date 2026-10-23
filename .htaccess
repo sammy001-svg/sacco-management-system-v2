@@ -1,21 +1,54 @@
-# SaccoPro – Apache hardening
-Options -Indexes
+# =====================================================================
+#  SaccoPro — Apache / cPanel configuration
+# =====================================================================
+Options -Indexes -MultiViews
 DirectoryIndex index.php
+ServerSignature Off
 
+# --- Always use HTTPS -------------------------------------------------------
+# Uncomment once SSL is active (cPanel → SSL/TLS Status / AutoSSL).
+# FORCE_HTTPS=true in .env also redirects pages; this block covers assets too.
+#<IfModule mod_rewrite.c>
+#  RewriteEngine On
+#  RewriteCond %{HTTPS} !=on
+#  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+#  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+#</IfModule>
+
+# --- Private folders are never served (works in sub-folders too) -----------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(app|database|cron|storage|deploy|dist|\.git)(/|$) - [F,L]
+</IfModule>
+
+# --- Never serve dotfiles (.env, .user.ini, .git…), dumps, logs, docs -------
+<FilesMatch "(^\.|\.(sql|gz|zip|log|md|cache|lock|bak|ini|example)$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# --- Security headers ---------------------------------------------------------
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+  Header unset X-Powered-By
 </IfModule>
 
-# Never serve dotfiles, SQL dumps, logs or markdown
-<FilesMatch "(^\.|\.(sql|log|md|cache|lock)$)">
-  Require all denied
-</FilesMatch>
-
+# --- Compression & caching for static assets ----------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresByType text/css "access plus 7 days"
-  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType text/css "access plus 30 days"
+  ExpiresByType application/javascript "access plus 30 days"
   ExpiresByType image/svg+xml "access plus 30 days"
+  ExpiresByType image/png "access plus 30 days"
 </IfModule>

@@ -29,8 +29,8 @@ $root = str_replace('/', DIRECTORY_SEPARATOR, APP_ROOT);
     <div class="card-body text-sm">
       <p class="mb-2">Windows (Task Scheduler), run once in an administrator prompt:</p>
       <p class="mb-2"><code style="display:block;white-space:pre-wrap;padding:10px">schtasks /create /sc daily /st 01:30 /tn "SaccoPro backup" /tr "C:\xampp\php\php.exe \"<?= e($root) ?>\cron\backup.php\""</code></p>
-      <p class="mb-2">Linux (crontab):</p>
-      <p class="mb-2"><code style="display:block;white-space:pre-wrap;padding:10px">30 1 * * * php <?= e(APP_ROOT) ?>/cron/backup.php</code></p>
+      <p class="mb-2">cPanel → Cron Jobs (or Linux crontab), daily at 01:30:</p>
+      <p class="mb-2"><code style="display:block;white-space:pre-wrap;padding:10px">/usr/local/bin/php <?= e(APP_ROOT) ?>/cron/backup.php >/dev/null 2>&1</code></p>
       <div class="info-strip warning"><i class="bi bi-cloud-arrow-up"></i><span>A backup on the same server does not protect you from disk failure or theft. Copy the files to another location (external drive or cloud storage) regularly.</span></div>
       <p class="muted">Restore: <code>gunzip &lt; FILE.sql.gz | mysql -u USER -p <?= e(config('db.name')) ?></code></p>
     </div>

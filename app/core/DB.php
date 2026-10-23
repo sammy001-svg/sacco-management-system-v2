@@ -20,6 +20,9 @@ final class DB
                 PDO::ATTR_STRINGIFY_FETCHES  => false,
             ]);
             self::$pdo->exec("SET time_zone = '" . date('P') . "'");
+            if (!empty($c['sql_mode'])) {
+                self::$pdo->prepare('SET SESSION sql_mode = ?')->execute([$c['sql_mode']]);
+            }
         }
         return self::$pdo;
     }

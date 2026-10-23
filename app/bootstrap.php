@@ -1,11 +1,18 @@
 <?php
 declare(strict_types=1);
 
+if (PHP_VERSION_ID < 80100) {
+    http_response_code(500);
+    exit('SaccoPro needs PHP 8.1 or newer (this server runs ' . PHP_VERSION . '). In cPanel open "Select PHP Version" or "MultiPHP Manager" and choose PHP 8.1+.');
+}
+
 define('SACCO', true);
 define('APP_PATH', __DIR__);
 define('APP_ROOT', dirname(__DIR__));
 define('APP_DB_VERSION', 3); // bump with every schema change; see database/Migrator.php
 
+require APP_PATH . '/core/Env.php';
+Env::load(APP_ROOT . '/.env');
 $GLOBALS['config'] = require APP_PATH . '/config.php';
 
 date_default_timezone_set($GLOBALS['config']['timezone']);
@@ -31,8 +38,22 @@ require APP_PATH . '/services/ImportService.php';
 require APP_PATH . '/services/BackupService.php';
 require APP_PATH . '/core/Totp.php';
 
+/** HTTPS detection that also works behind cPanel proxies and Cloudflare. */
+function request_is_https(): bool
+{
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ($_SERVER['SERVER_PORT'] ?? null) == 443
+        || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+        || str_contains($_SERVER['HTTP_CF_VISITOR'] ?? '', 'https');
+}
+
+if (PHP_SAPI !== 'cli' && $GLOBALS['config']['force_https'] && !request_is_https()) {
+    header('Location: https://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '/'), true, 301);
+    exit;
+}
+
 if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
-    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $secure = request_is_https();
     session_name($GLOBALS['config']['session']['name']);
     session_set_cookie_params([
         'lifetime' => 0,
@@ -46,4 +67,7 @@ if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     header('X-Frame-Options: SAMEORIGIN');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
+    if ($secure) {
+        header('Strict-Transport-Security: max-age=31536000');
+    }
 }
